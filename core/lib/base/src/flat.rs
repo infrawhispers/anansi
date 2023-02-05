@@ -32,6 +32,55 @@ pub struct FlatIndex<TMetric: metric::Metric> {
     aligned_dim: usize,
 }
 
+impl<TMetric> ann::ANNIndex for FlatIndex<TMetric>
+where
+    TMetric: metric::Metric,
+{
+    fn new(params: &ann::ANNParams) -> Result<FlatIndex<TMetric>, Box<dyn std::error::Error>> {
+        let flat_params: &FlatParams = match params {
+            ann::ANNParams::Flat { params } => params,
+            // _ => {
+            //     unreachable!("incorrect params passed for construction")
+            // }
+        };
+        FlatIndex::new(flat_params)
+    }
+    fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<bool, Box<dyn std::error::Error>> {
+        if (data.len() % eids.len()) != 0 {
+            return Err(Box::new(errors::ANNError::GenericError {
+                message: format!(
+                    "data is not an exact multiple of eids - data_len: {} | eids_len: {}",
+                    eids.len(),
+                    data.len(),
+                )
+                .into(),
+            }));
+        }
+        let data_len = data.len() / eids.len();
+        for (idx, eid) in eids.iter().enumerate() {
+            match self.insert(*eid, &data[idx * data_len..idx * data_len + data_len]) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(err);
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    fn insert(&self, eid: EId, data: &[f32]) -> Result<bool, Box<dyn std::error::Error>> {
+        self.insert(eid, data)
+    }
+
+    fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
+        self.search(q, k)
+    }
+
+    fn save(&self) -> Result<bool, Box<dyn std::error::Error>> {
+        Ok(true)
+    }
+}
+
 impl<TMetric> FlatIndex<TMetric>
 where
     TMetric: metric::Metric,

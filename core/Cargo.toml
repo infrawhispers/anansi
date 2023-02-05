@@ -9,6 +9,7 @@ edition = "2021"
 base = { path = "lib/base" }
 log = "0.4.17"
 parking_lot = "0.12.1"
+rayon = "1.6.1"
 serde = "1.0.152"
 
 [workspace]

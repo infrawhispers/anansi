@@ -79,7 +79,7 @@ impl Metric for MetricL2 {
     #[inline(always)]
     #[allow(unused_variables)]
     fn compare(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(all(target_arch = "x86_64", target_feature = "fma", target_feature = "avx",))]
         {
             if is_x86_feature_detected!("avx") && is_x86_feature_detected!("fma") {
                 return unsafe { l2_similiarity_avx(arr_a, arr_b, length) };
@@ -143,7 +143,7 @@ impl Metric for MetricL1 {
     #[inline(always)]
     #[allow(unused_variables)]
     fn compare(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(all(target_arch = "x86_64", target_feature = "fma", target_feature = "avx",))]
         {
             if is_x86_feature_detected!("avx") && is_x86_feature_detected!("fma") {
                 return unsafe { l1_similiarity_avx(arr_a, arr_b, length) };

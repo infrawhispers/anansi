@@ -19,9 +19,9 @@ pub trait ANNIndex: Send + Sync {
     fn new(params: &ANNParams) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized;
-
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<bool, Box<dyn std::error::Error>>;
     fn insert(&self, eid: EId, data: &[f32]) -> Result<bool, Box<dyn std::error::Error>>;
+    fn search(&self, q: &[f32], k: usize) -> Result<Vec<Node>, Box<dyn std::error::Error>>;
     fn save(&self) -> Result<bool, Box<dyn std::error::Error>>;
 }
 
