@@ -217,19 +217,20 @@ where
                 // we are now in a single segment!
                 let data = vec_store.read();
                 for i in 0..data.num_vectors {
+                    let eid: ann::EId;
+                    let vid = *segment_id * (self.v_per_segment as usize) + i;
+                    match self.vid_to_eid.read().get(&vid) {
+                        Some(val) => eid = val.clone(),
+                        None => {
+                            continue;
+                        }
+                    }
+
                     let arr_a: &[f32] = &q_aligned.data[..];
                     let arr_b: &[f32] =
                         &data.data[i * self.aligned_dim..(i * self.aligned_dim) + self.aligned_dim];
                     let dist = TMetric::compare(arr_a, arr_b, arr_a.len());
-                    let vid = *segment_id * (self.v_per_segment as usize) + i;
-                    let eid: ann::EId;
-                    match self.vid_to_eid.read().get(&vid) {
-                        Some(val) => eid = val.clone(),
-                        None => {
-                            warn!("missing eid for vid: {} - skipping", vid);
-                            continue;
-                        }
-                    }
+
                     res_heap.push(ann::Node {
                         vid: vid,
                         eid: eid,
