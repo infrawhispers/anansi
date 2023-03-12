@@ -75,50 +75,39 @@ pub(crate) unsafe fn l1_similarity_aarch(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     result
 }
 
+// TODO(lneath) - figure this one out!
 #[cfg(all(target_feature = "neon",))]
 #[inline(always)]
 pub(crate) unsafe fn hamming_similarity_aarch(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let n = arr_a.len();
     let m: isize = (n).try_into().unwrap();
-    let mut sum1: core::arch::aarch64::uint32x4_t = core::arch::aarch64::vdupq_n_u32(0u32);
-    let mut sum2: core::arch::aarch64::uint32x4_t = core::arch::aarch64::vdupq_n_u32(0u32);
-    let mut sum3: core::arch::aarch64::uint32x4_t = core::arch::aarch64::vdupq_n_u32(0u32);
-    let mut sum4: core::arch::aarch64::uint32x4_t = core::arch::aarch64::vdupq_n_u32(0u32);
+    let mut sum1: uint32x4_t = vdupq_n_u32(0u32);
+    let mut sum2: uint32x4_t = vdupq_n_u32(0u32);
+    let mut sum3: uint32x4_t = vdupq_n_u32(0u32);
+    let mut sum4: uint32x4_t = vdupq_n_u32(0u32);
     // we need an explicit cast in order to work with
     // the rust compiler!
     let mut ptr_a: *const u32 = arr_a.as_ptr() as *const u32;
     let mut ptr_b: *const u32 = arr_b.as_ptr() as *const u32;
     let mut i: isize = 0;
     while i < m {
-        let temp1: core::arch::aarch64::uint32x4_t = core::arch::aarch64::vandq_u32(
-            core::arch::aarch64::vld1q_u32(ptr_a),
-            core::arch::aarch64::vld1q_u32(ptr_b),
-        );
-        let temp2: core::arch::aarch64::uint32x4_t = core::arch::aarch64::vandq_u32(
-            core::arch::aarch64::vld1q_u32(ptr_a.offset(4)),
-            core::arch::aarch64::vld1q_u32(ptr_b.offset(4)),
-        );
-        let temp3: core::arch::aarch64::uint32x4_t = core::arch::aarch64::vandq_u32(
-            core::arch::aarch64::vld1q_u32(ptr_a.offset(8)),
-            core::arch::aarch64::vld1q_u32(ptr_b.offset(8)),
-        );
-        let temp4: core::arch::aarch64::uint32x4_t = core::arch::aarch64::vandq_u32(
-            core::arch::aarch64::vld1q_u32(ptr_a.offset(12)),
-            core::arch::aarch64::vld1q_u32(ptr_b.offset(12)),
-        );
+        let temp1: uint32x4_t = vandq_u32(vld1q_u32(ptr_a), vld1q_u32(ptr_b));
+        let temp2: uint32x4_t = vandq_u32(vld1q_u32(ptr_a.offset(4)), vld1q_u32(ptr_b.offset(4)));
+        let temp3: uint32x4_t = vandq_u32(vld1q_u32(ptr_a.offset(8)), vld1q_u32(ptr_b.offset(8)));
+        let temp4: uint32x4_t = vandq_u32(vld1q_u32(ptr_a.offset(12)), vld1q_u32(ptr_b.offset(12)));
         // sum1 = count_ones
-        // sum1 = core::arch::aarch64::vaddq_f32(temp1, sum1);
-        // sum2 = core::arch::aarch64::vaddq_f32(temp2, sum2);
-        // sum3 = core::arch::aarch64::vaddq_f32(temp3, sum3);
-        // sum4 = core::arch::aarch64::vaddq_f32(temp4, sum4);
+        // sum1 = vaddq_f32(temp1, sum1);
+        // sum2 = vaddq_f32(temp2, sum2);
+        // sum3 = vaddq_f32(temp3, sum3);
+        // sum4 = vaddq_f32(temp4, sum4);
         ptr_a = ptr_a.offset(16);
         ptr_b = ptr_b.offset(16);
         i += 16
     }
-    // let result = core::arch::aarch64::vaddvq_f32(sum1)
-    //     + core::arch::aarch64::vaddvq_f32(sum2)
-    //     + core::arch::aarch64::vaddvq_f32(sum3)
-    //     + core::arch::aarch64::vaddvq_f32(sum4);
+    // let result = vaddvq_f32(sum1)
+    //     + vaddvq_f32(sum2)
+    //     + vaddvq_f32(sum3)
+    //     + vaddvq_f32(sum4);
     // result
     0.0
 }

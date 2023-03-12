@@ -14,6 +14,9 @@ pub mod metric_wasm;
 #[cfg(target_arch = "aarch64")]
 pub mod metric_aarch;
 
+#[cfg(target_arch = "x86_64")]
+pub mod metric_avx;
+
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }
