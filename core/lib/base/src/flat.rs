@@ -39,9 +39,9 @@ where
     fn new(params: &ann::ANNParams) -> Result<FlatIndex<TMetric>, Box<dyn std::error::Error>> {
         let flat_params: &FlatParams = match params {
             ann::ANNParams::Flat { params } => params,
-            // _ => {
-            //     unreachable!("incorrect params passed for construction")
-            // }
+            _ => {
+                unreachable!("incorrect params passed for construction")
+            }
         };
         FlatIndex::new(flat_params)
     }
@@ -292,7 +292,7 @@ mod tests {
             }
         }
         // now craft a search that includes the vector in the external segment!
-        let point_search = vec![1.2 * (10001 as f32); 31];
+        let point_search = vec![1.2 * (10001 as f32); 128];
         match index.search(&point_search, 1) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
@@ -395,7 +395,7 @@ mod tests {
         for i in 0..10 {
             let mut id = [0u8; 16];
             id[0] = i;
-            let point = vec![1.2 * (i as f32); 128];
+            let point = vec![100.0 * (i as f32); 128];
             match index.insert(id, &point[..]) {
                 Ok(res) => {
                     assert_eq!(true, res);
@@ -405,7 +405,7 @@ mod tests {
                 }
             }
         }
-        let point_search = vec![0.4; 128];
+        let point_search = vec![0.1; 128];
         match index.search(&point_search, 1) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();

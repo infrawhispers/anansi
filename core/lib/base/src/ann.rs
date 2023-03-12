@@ -1,10 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
+use crate::diskannv1::DiskANNParams;
 use crate::flat::FlatParams;
 
+#[derive(Debug)]
 pub enum ANNParams {
     Flat { params: FlatParams },
+    DiskANN { params: DiskANNParams },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -62,13 +65,14 @@ impl PartialEq for Node {
 impl Eq for Node {}
 
 pub fn round_up(x: u32) -> u32 {
-    let mut v = x;
-    v -= 1;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v += 1;
-    return v;
+    ((x - 1) | (16 - 1)) + 1
+    // let mut v = x;
+    // v -= 1;
+    // v |= v >> 1;
+    // v |= v >> 2;
+    // v |= v >> 4;
+    // v |= v >> 8;
+    // v |= v >> 16;
+    // v += 1;
+    // return v;
 }

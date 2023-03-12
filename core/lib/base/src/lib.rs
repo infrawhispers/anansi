@@ -1,5 +1,10 @@
+#![feature(stdsimd)]
+// #[cfg(all(target_arch = "wasm", target_feature = "simd128",))]
+#![feature(simd_wasm64)]
+
 pub mod ann;
 mod av_store;
+pub mod diskannv1;
 mod errors;
 pub mod flat;
 pub mod metric;

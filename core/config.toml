@@ -1,3 +1,10 @@
 [build]
 rustflags = ["-C", "target-cpu=native"]
-#target = "wasm32-unknown-emscripten"
+target = "aarch64-apple-darwin"
+
+[test]
+rustflags = ["-C", "target-cpu=native"]
+target = "aarch64-apple-darwin"
+
+[target]
+default = "aarch64-apple-darwin"
