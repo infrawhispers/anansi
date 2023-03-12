@@ -1,7 +1,7 @@
 use core::arch::wasm32::*;
 use wasm_bindgen_test::*;
 
-use crate::metric::{l2_similarity, l1_similarity};
+use crate::metric::{l1_similarity, l2_similarity};
 
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
@@ -85,7 +85,6 @@ pub(crate) unsafe fn l1_similarity_wasm(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     result
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,4 +105,3 @@ mod tests {
         assert_eq!(l1, l1_simd);
     }
 }
-

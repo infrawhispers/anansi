@@ -5,7 +5,6 @@ use base::ann::{ANNIndex, ANNParams, EId};
 use base::diskannv1::DiskANNParams;
 use base::diskannv1::DiskANNV1Index;
 
-
 use wasm_bindgen_test::*;
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
@@ -13,8 +12,6 @@ wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 fn pass() {
     assert_eq!(1, 1);
 }
-
-
 
 #[wasm_bindgen]
 extern "C" {

@@ -107,6 +107,10 @@ impl Metric for MetricL1 {
                 return unsafe { metric_aarch::l1_similarity_aarch(arr_a, arr_b) };
             }
         }
+        #[cfg(all(target_arch = "wasm32", target_feature = "simd128",))]
+        {
+            return unsafe { metric_wasm::l1_similarity_wasm(arr_a, arr_b) };
+        }
         l1_similarity(arr_a, arr_b)
     }
 }
