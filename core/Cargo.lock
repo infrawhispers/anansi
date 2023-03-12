@@ -338,6 +338,7 @@ dependencies = [
  "rayon",
  "wasm-bindgen",
  "wasm-bindgen-rayon",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

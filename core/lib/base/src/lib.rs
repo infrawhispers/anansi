@@ -1,5 +1,5 @@
 #![feature(stdsimd)]
-// #[cfg(all(target_arch = "wasm", target_feature = "simd128",))]
+#![cfg_attr(target_arch = "wasm32", feature(simd_wasm64))]
 
 pub mod ann;
 mod av_store;
@@ -8,7 +8,7 @@ mod errors;
 pub mod flat;
 pub mod metric;
 
-#[cfg(target_arch = "wasm")]
+#[cfg(target_arch = "wasm32")]
 pub mod metric_wasm;
 
 #[cfg(target_arch = "aarch64")]
