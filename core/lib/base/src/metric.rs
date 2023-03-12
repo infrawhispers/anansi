@@ -11,7 +11,7 @@ use crate::metric_wasm;
     MetricL1
 */
 pub trait Metric: Sync + Send {
-    fn compare(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32;
+    fn compare(arr_a: &[f32], arr_b: &[f32]) -> f32;
     fn pre_process(arr_a: &[f32]) -> Option<Vec<f32>>;
 }
 
@@ -33,7 +33,7 @@ unsafe fn _mm256_reduce_add_ps(x: core::arch::x86_64::__m256) -> f32 {
 
 #[cfg(all(target_feature = "fma", target_feature = "avx",))]
 #[inline(always)]
-unsafe fn l2_similarity_avx(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+unsafe fn l2_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let result;
     let niters = (length / 8) as isize;
     let mut sum = core::arch::x86_64::_mm256_setzero_ps();
@@ -65,7 +65,7 @@ unsafe fn l2_similarity_avx(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 
 }
 
 #[allow(unused_variables)]
-pub(crate) fn l2_similarity(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+pub(crate) fn l2_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     return arr_a
         .iter()
         .copied()
@@ -84,31 +84,31 @@ impl Metric for MetricL2 {
 
     #[inline(always)]
     #[allow(unused_variables)]
-    fn compare(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+    fn compare(arr_a: &[f32], arr_b: &[f32]) -> f32 {
         #[cfg(all(target_arch = "x86_64", target_feature = "fma", target_feature = "avx",))]
         {
             if is_x86_feature_detected!("avx") && is_x86_feature_detected!("fma") {
-                return unsafe { l2_similarity_avx(arr_a, arr_b, length) };
+                return unsafe { l2_similarity_avx(arr_a, arr_b) };
             }
         }
         #[cfg(all(target_arch = "aarch64", target_feature = "neon",))]
         {
             if std::arch::is_aarch64_feature_detected!("neon") {
-                return unsafe { metric_aarch::l2_similarity_aarch(arr_a, arr_b, length) };
+                return unsafe { metric_aarch::l2_similarity_aarch(arr_a, arr_b) };
             }
         }
         #[cfg(all(target_arch = "wasm", target_feature = "simd128",))]
         {
-            return unsafe { l2_similarity_wasm(arr_a, arr_b, length) };
+            return unsafe { l2_similarity_wasm(arr_a, arr_b) };
         }
-        l2_similarity(arr_a, arr_b, length)
+        l2_similarity(arr_a, arr_b)
     }
 }
 
 #[cfg(all(target_feature = "avx",))]
 #[inline(always)]
 #[allow(unused_variables)]
-unsafe fn l1_similarity_avx(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+unsafe fn l1_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let result;
     let niters = (length / 8) as isize;
     let mut sum = core::arch::x86_64::_mm256_setzero_ps();
@@ -140,7 +140,7 @@ unsafe fn l1_similarity_avx(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 
 }
 
 #[allow(unused_variables)]
-pub(crate) fn l1_similarity(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+pub(crate) fn l1_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     return arr_a
         .iter()
         .cloned()
@@ -158,20 +158,20 @@ impl Metric for MetricL1 {
     }
     #[inline(always)]
     #[allow(unused_variables)]
-    fn compare(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+    fn compare(arr_a: &[f32], arr_b: &[f32]) -> f32 {
         #[cfg(all(target_arch = "x86_64", target_feature = "fma", target_feature = "avx",))]
         {
             if is_x86_feature_detected!("avx") && is_x86_feature_detected!("fma") {
-                return unsafe { l1_similarity_avx(arr_a, arr_b, length) };
+                return unsafe { l1_similarity_avx(arr_a, arr_b) };
             }
         }
         #[cfg(all(target_arch = "aarch64", target_feature = "neon",))]
         {
             if std::arch::is_aarch64_feature_detected!("neon") {
-                return unsafe { metric_aarch::l1_similarity_aarch(arr_a, arr_b, length) };
+                return unsafe { metric_aarch::l1_similarity_aarch(arr_a, arr_b) };
             }
         }
-        l1_similarity(arr_a, arr_b, length)
+        l1_similarity(arr_a, arr_b)
     }
 }
 
@@ -185,7 +185,7 @@ impl Metric for MetricL1 {
 // }
 
 #[allow(unused_variables)]
-fn hamming_similarity(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+fn hamming_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     // TODO(lneath) - we use the raw bitwise representations to do hamming
     // the client needs to be aware of this when creating the vectors and
     // sending them out to the caller
@@ -206,7 +206,7 @@ impl Metric for Hamming {
         None
     }
     #[inline(always)]
-    fn compare(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
-        hamming_similarity(arr_a, arr_b, length)
+    fn compare(arr_a: &[f32], arr_b: &[f32]) -> f32 {
+        hamming_similarity(arr_a, arr_b)
     }
 }

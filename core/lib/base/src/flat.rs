@@ -231,7 +231,7 @@ where
                     let arr_a: &[f32] = &q_aligned.data[..];
                     let arr_b: &[f32] =
                         &data.data[i * self.aligned_dim..(i * self.aligned_dim) + self.aligned_dim];
-                    let dist = TMetric::compare(arr_a, arr_b, arr_a.len());
+                    let dist = TMetric::compare(arr_a, arr_b);
 
                     res_heap.push(ann::Node {
                         vid: vid,

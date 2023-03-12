@@ -8,7 +8,7 @@ use crate::metric::l2_similarity;
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
 #[cfg(all(target_feature = "simd128",))]
-pub(crate) unsafe fn l2_similarity_wasm(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+pub(crate) unsafe fn l2_similarity_wasm(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let n = arr_a.len();
     let m: isize = (n).try_into().unwrap();
     let mut sum1: core::arch::wasm::v128 = f32x4_splat(0.0f32);
@@ -56,7 +56,7 @@ fn test_wasm() {
     let v2: Vec<f32> = vec![
         40., 41., 42., 43., 44., 45., 46., 47., 48., 49., 50., 51., 52., 53., 54., 55.,
     ];
-    let l2 = l2_similarity(&v1, &v2, v2.len());
-    let l2_simd = unsafe { l2_similarity_wasm(&v1, &v2, v2.len()) };
+    let l2 = l2_similarity(&v1, &v2);
+    let l2_simd = unsafe { l2_similarity_wasm(&v1, &v2) };
     assert_eq!(l2, l2_simd);
 }

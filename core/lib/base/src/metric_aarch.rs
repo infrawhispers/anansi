@@ -3,7 +3,7 @@ use core::arch::aarch64::*;
 
 #[cfg(all(target_feature = "neon",))]
 #[inline(always)]
-pub(crate) unsafe fn l2_similarity_aarch(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+pub(crate) unsafe fn l2_similarity_aarch(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     // 0.0
     // let niters = (length / 4) as isize;
     // let mut sum: float32x4_t = vdupq_n_f32(0.0f32);
@@ -47,7 +47,7 @@ pub(crate) unsafe fn l2_similarity_aarch(arr_a: &[f32], arr_b: &[f32], length: u
 
 #[cfg(all(target_feature = "neon",))]
 #[inline(always)]
-pub(crate) unsafe fn l1_similarity_aarch(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+pub(crate) unsafe fn l1_similarity_aarch(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let n = arr_a.len();
     let m: isize = (n).try_into().unwrap();
     let mut sum1: float32x4_t = vdupq_n_f32(0.0f32);
@@ -77,7 +77,7 @@ pub(crate) unsafe fn l1_similarity_aarch(arr_a: &[f32], arr_b: &[f32], length: u
 
 #[cfg(all(target_feature = "neon",))]
 #[inline(always)]
-pub(crate) unsafe fn hamming_similarity_aarch(arr_a: &[f32], arr_b: &[f32], length: usize) -> f32 {
+pub(crate) unsafe fn hamming_similarity_aarch(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let n = arr_a.len();
     let m: isize = (n).try_into().unwrap();
     let mut sum1: core::arch::aarch64::uint32x4_t = core::arch::aarch64::vdupq_n_u32(0u32);
@@ -136,12 +136,12 @@ mod tests {
             let v2: Vec<f32> = vec![
                 40., 41., 42., 43., 44., 45., 46., 47., 48., 49., 50., 51., 52., 53., 54., 55.,
             ];
-            let l2 = l2_similarity(&v1, &v2, v2.len());
-            let l2_simd = unsafe { l2_similarity_aarch(&v1, &v2, v2.len()) };
+            let l2 = l2_similarity(&v1, &v2);
+            let l2_simd = unsafe { l2_similarity_aarch(&v1, &v2) };
             assert_eq!(l2, l2_simd);
 
-            let l1 = l1_similarity(&v1, &v2, v2.len());
-            let l1_simd = unsafe { l1_similarity_aarch(&v1, &v2, v2.len()) };
+            let l1 = l1_similarity(&v1, &v2);
+            let l1_simd = unsafe { l1_similarity_aarch(&v1, &v2) };
             assert_eq!(l1, l1_simd);
         }
     }
