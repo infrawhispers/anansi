@@ -1,7 +1,9 @@
 use std::mem;
 
+#[derive(Clone)]
 #[repr(align(32))]
 pub struct AlignToThirtyTwo([u8; 32]);
+
 #[derive(Debug)]
 pub struct AlignedDataStore {
     pub data: Vec<f32>,
@@ -12,7 +14,7 @@ impl AlignedDataStore {
     unsafe fn aligned_vec(n_bytes: usize) -> Vec<f32> {
         // Lazy math to ensure we always have enough.
         let n_units = (n_bytes / mem::size_of::<AlignToThirtyTwo>()) + 1;
-        let mut aligned: Vec<AlignToThirtyTwo> = Vec::with_capacity(n_units);
+        let mut aligned: Vec<AlignToThirtyTwo> = vec![AlignToThirtyTwo([0u8; 32]); n_units]; //Vec::with_capacity(n_units);
         let ptr = aligned.as_mut_ptr();
         let len_units = aligned.len();
         let cap_units = aligned.capacity();

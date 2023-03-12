@@ -87,6 +87,7 @@ where
 {
     pub fn new(params: &FlatParams) -> Result<FlatIndex<TMetric>, Box<dyn std::error::Error>> {
         let aligned_dim = ann::round_up(params.dim as u32) as usize;
+        println!("aligned dim is: {}", aligned_dim);
         let mut v_per_segment: usize = (params.segment_size_kb * 1000) / (aligned_dim as usize * 4);
         if v_per_segment < 1000 {
             v_per_segment = 1000
@@ -187,6 +188,7 @@ where
                 }
             }
         }
+        println!("removing the eid");
         // key is in our mapping so do the delete set dance
         self.eid_to_vid.write().remove(&eid);
         self.vid_to_eid.write().remove(&vid);
@@ -313,7 +315,7 @@ mod tests {
         for i in 0..10 {
             let mut id = [0u8; 16];
             id[0] = i;
-            let point = vec![1.2 * (i as f32); 31];
+            let point = vec![100.0 * (i as f32); 31];
             match index.insert(id, &point[..]) {
                 Ok(res) => {
                     assert_eq!(true, res);
@@ -323,7 +325,7 @@ mod tests {
                 }
             }
         }
-        let point_search = vec![0.4; 31];
+        let point_search = vec![0.0; 31];
         match index.search(&point_search, 1) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
