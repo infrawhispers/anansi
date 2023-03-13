@@ -40,7 +40,7 @@ impl AlignedDataStore {
         let mut data_vec;
         unsafe {
             // we store floats so we always multiple by 4
-            // todo(lneath) - make this configurable if we end up using ints
+            // TODO(infrawhispers) - make this configurable if we end up using ints
             data_vec = AlignedDataStore::aligned_vec(total_internal_points * aligned_dim * 4);
             data_vec.set_len(total_internal_points * aligned_dim);
         }
@@ -50,7 +50,7 @@ impl AlignedDataStore {
         };
     }
 
-    // TODO(lneath) - do we still need this??
+    // TODO(infrawhispers) - do we still need this??
     // pub fn aligned_add(&self, id: usize, length: usize, data: &[f32]) {
     //     let ptr = self.data.as_ptr();
     //     unsafe {

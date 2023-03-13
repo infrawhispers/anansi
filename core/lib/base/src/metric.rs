@@ -117,7 +117,7 @@ impl Metric for Hamming {
 }
 
 pub(crate) fn hamming_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
-    // TODO(lneath) - we use the raw bitwise representations to do hamming
+    // TODO(infrawhispers) - we use the raw bitwise representations to do hamming
     // the client needs to be aware of this when creating the vectors and
     // sending them out to the caller
     let res: u32 = arr_a
