@@ -8,6 +8,8 @@ mod errors;
 pub mod flat;
 pub mod metric;
 
+mod diskannv1_test;
+
 #[cfg(target_arch = "wasm32")]
 pub mod metric_wasm;
 

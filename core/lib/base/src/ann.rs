@@ -22,10 +22,10 @@ pub trait ANNIndex: Send + Sync {
     fn new(params: &ANNParams) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized;
-    fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<bool, Box<dyn std::error::Error>>;
-    fn insert(&self, eid: EId, data: &[f32]) -> Result<bool, Box<dyn std::error::Error>>;
+    fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>>;
+    fn insert(&self, eid: EId, data: &[f32]) -> Result<(), Box<dyn std::error::Error>>;
     fn search(&self, q: &[f32], k: usize) -> Result<Vec<Node>, Box<dyn std::error::Error>>;
-    fn save(&self) -> Result<bool, Box<dyn std::error::Error>>;
+    fn save(&self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 // we use a 16 byte representation for EIds - this would allow clients to
@@ -38,6 +38,7 @@ pub struct Node {
     pub eid: EId,
     pub distance: f32,
 }
+
 impl Ord for Node {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.distance == other.distance {
@@ -64,6 +65,36 @@ impl PartialEq for Node {
 
 impl Eq for Node {}
 
+#[derive(Default, Clone, Debug, Copy)]
+pub struct INode {
+    pub vid: usize,
+    pub distance: f32,
+    pub flag: bool,
+}
+impl Ord for INode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.distance == other.distance {
+            return std::cmp::Ordering::Equal;
+        }
+        if self.distance < other.distance {
+            return std::cmp::Ordering::Less;
+        }
+        std::cmp::Ordering::Greater
+    }
+}
+impl PartialOrd for INode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl PartialEq for INode {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for INode {}
+
 pub fn round_up(x: u32) -> u32 {
     ((x - 1) | (16 - 1)) + 1
     // let mut v = x;
@@ -75,4 +106,14 @@ pub fn round_up(x: u32) -> u32 {
     // v |= v >> 16;
     // v += 1;
     // return v;
+}
+
+pub fn copy_within_a_slice<T: Clone>(v: &mut [T], from: usize, to: usize, len: usize) {
+    if from > to {
+        let (dst, src) = v.split_at_mut(from);
+        dst[to..to + len].clone_from_slice(&src[..len]);
+    } else {
+        let (src, dst) = v.split_at_mut(to);
+        dst[..len].clone_from_slice(&src[from..from + len]);
+    }
 }

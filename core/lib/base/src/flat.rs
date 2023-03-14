@@ -45,7 +45,7 @@ where
         };
         FlatIndex::new(flat_params)
     }
-    fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<bool, Box<dyn std::error::Error>> {
+    fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         if (data.len() % eids.len()) != 0 {
             return Err(Box::new(errors::ANNError::GenericError {
                 message: format!(
@@ -65,10 +65,10 @@ where
                 }
             }
         }
-        Ok(true)
+        Ok(())
     }
 
-    fn insert(&self, eid: EId, data: &[f32]) -> Result<bool, Box<dyn std::error::Error>> {
+    fn insert(&self, eid: EId, data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         self.insert(eid, data)
     }
 
@@ -76,8 +76,8 @@ where
         self.search(q, k)
     }
 
-    fn save(&self) -> Result<bool, Box<dyn std::error::Error>> {
-        Ok(true)
+    fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
     }
 }
 
@@ -95,8 +95,8 @@ where
         let id_increment = Arc::new(AtomicUsize::new(0));
         let delete_set: Arc<RwLock<HashSet<usize>>> = Arc::new(RwLock::new(HashSet::new()));
         let segement_0 = RwLock::new(av_store::AlignedDataStore::new(
-            aligned_dim.try_into().unwrap(),
             v_per_segment,
+            aligned_dim.try_into().unwrap(),
         ));
         let datastore = Arc::new(RwLock::new(HashMap::new()));
         {
@@ -119,7 +119,7 @@ where
             aligned_dim: aligned_dim,
         })
     }
-    pub fn insert(&self, eid: ann::EId, point: &[f32]) -> Result<bool, Box<dyn std::error::Error>> {
+    pub fn insert(&self, eid: ann::EId, point: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         if point.len() > self.aligned_dim {
             return Err(Box::new(errors::ANNError::GenericError {
                 message: format!(
@@ -158,8 +158,8 @@ where
         }
         if need_new_segment {
             let new_segment = RwLock::new(av_store::AlignedDataStore::new(
-                self.aligned_dim.try_into().unwrap(),
                 self.v_per_segment.try_into().unwrap(),
+                self.aligned_dim.try_into().unwrap(),
             ));
             self.datastore.write().insert(segment_id, new_segment);
         }
@@ -176,7 +176,7 @@ where
         self.eid_to_vid.write().insert(eid, vid);
         self.vid_to_eid.write().insert(vid, eid);
 
-        Ok(true)
+        Ok(())
     }
     pub fn delete(&self, eid: ann::EId) -> Result<bool, Box<dyn std::error::Error>> {
         let vid: usize;
@@ -208,7 +208,7 @@ where
         }
         // maybe we want to keep around a bunch of these in a pool we can pull from?
         let mut res_heap: BinaryHeap<ann::Node> = BinaryHeap::with_capacity(k + 1);
-        let mut q_aligned = av_store::AlignedDataStore::new(self.aligned_dim, 1);
+        let mut q_aligned = av_store::AlignedDataStore::new(1, self.aligned_dim);
         q_aligned.data[..q.len()].copy_from_slice(&q[..]);
         // we should probably use rayon over segments and have multiple vectors
         // in a given segment
@@ -272,7 +272,7 @@ mod tests {
             let point = vec![1.2 * (i as f32); 128];
             match index.insert(id, &point[..]) {
                 Ok(res) => {
-                    assert_eq!(true, res);
+                    assert_eq!((), res);
                 }
                 Err(_) => {
                     panic!("error should not be thrown on insert");
@@ -287,7 +287,7 @@ mod tests {
         let point = vec![1.2 * (1000 as f32); 128];
         match index.insert(id, &point[..]) {
             Ok(res) => {
-                assert_eq!(true, res);
+                assert_eq!((), res);
             }
             Err(_) => {
                 panic!("error should not be thrown on insert");
@@ -318,7 +318,7 @@ mod tests {
             let point = vec![100.0 * (i as f32); 31];
             match index.insert(id, &point[..]) {
                 Ok(res) => {
-                    assert_eq!(true, res);
+                    assert_eq!((), res);
                 }
                 Err(_) => {
                     panic!("error should not be thrown on insert");
@@ -369,7 +369,7 @@ mod tests {
             let point = vec![1.2 * (i as f32); 31];
             match index.insert(id, &point[..]) {
                 Ok(res) => {
-                    assert_eq!(true, res);
+                    assert_eq!((), res);
                 }
                 Err(_) => {
                     panic!("error should not be thrown on insert");
@@ -400,7 +400,7 @@ mod tests {
             let point = vec![100.0 * (i as f32); 128];
             match index.insert(id, &point[..]) {
                 Ok(res) => {
-                    assert_eq!(true, res);
+                    assert_eq!((), res);
                 }
                 Err(_) => {
                     panic!("error should not be thrown on insert");

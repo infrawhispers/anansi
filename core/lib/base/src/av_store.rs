@@ -36,7 +36,7 @@ impl AlignedDataStore {
             }
         }
     }
-    pub fn new(aligned_dim: usize, total_internal_points: usize) -> AlignedDataStore {
+    pub fn new(total_internal_points: usize, aligned_dim: usize) -> AlignedDataStore {
         let mut data_vec;
         unsafe {
             // we store floats so we always multiple by 4
