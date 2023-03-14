@@ -6,10 +6,10 @@ use std::io::Cursor;
 use std::path::Path;
 
 use base::ann;
-use base::ann::ANNIndex;
-use base::ann::EId;
+// use base::ann::ANNIndex;
+// use base::ann::EId;
 use base::diskannv1;
-use base::flat;
+// use base::flat;
 use base::metric;
 
 struct SIFT<'a> {
@@ -98,11 +98,12 @@ mod test {
     #[test]
     fn sift_small_exact() {
         let directory = Path::new("../../data/siftsmall/");
+        let dims: usize = 128;
         let loader = SIFT {
             directory: directory,
-            dims: 128,
+            dims: dims,
         };
-        let dims: usize = 128;
+
         let k: usize = 100;
 
         let base_vectors = loader
@@ -119,14 +120,14 @@ mod test {
             eids[i] = eid;
         }
 
-        let query_vectors = loader
+        let _query_vectors = loader
             .fetch_vectors("siftsmall_query.fvecs", 128)
             .expect("unable to fetch the query vectors");
 
-        let truth_vectors = loader
+        let _truth_vectors = loader
             .fetch_ground_truth_by_id("siftsmall_groundtruth.ivecs", k)
             .expect("fetching the items");
-        let num_truth_vectors = truth_vectors.len();
+        let _num_truth_vectors = _truth_vectors.len();
         let params = ann::ANNParams::DiskANN {
             params: diskannv1::DiskANNParams {
                 dim: 128,
@@ -138,7 +139,7 @@ mod test {
                 indexing_alpha: 1.2,
             },
         };
-        let ann_idx: diskannv1::DiskANNV1Index<metric::MetricL2> =
+        let _ann_idx: diskannv1::DiskANNV1Index<metric::MetricL2> =
             ann::ANNIndex::new(&params).expect("error creating diskannv1 index");
         // ann
     }
