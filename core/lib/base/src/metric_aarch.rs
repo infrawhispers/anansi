@@ -121,7 +121,7 @@ unsafe fn popcnt_neon_vvnt(data: &[u8]) -> f32 {
             sum = vpadalq(sum, t2);
             sum = vpadalq(sum, t3);
         }
-        let mut tmp: [u64; 2] = [0u64, 0u64];
+        let tmp: [u64; 2] = [0u64, 0u64];
         vst1q_u64(tmp.as_ptr() as *mut u64, sum);
         cnt += tmp[0];
         cnt += tmp[1];
@@ -142,7 +142,7 @@ pub(crate) unsafe fn hamming_similarity_aarch(arr_a: &[f32], arr_b: &[f32]) -> f
     let mut ptr_a: *const u32 = arr_a.as_ptr() as *const u32;
     let mut ptr_b: *const u32 = arr_b.as_ptr() as *const u32;
     let temp: Vec<u32> = vec![0u32; arr_a.len()];
-    let mut ptr_t: *mut u32 = temp.as_ptr() as *mut u32;
+    let ptr_t: *mut u32 = temp.as_ptr() as *mut u32;
     let mut i: isize = 0;
     while i < m {
         let mut res = vld1q_u32_x4(ptr_a);

@@ -9,7 +9,6 @@ use crate::metric;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use roaring::RoaringTreemap;
-use serde::de::Expected;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::atomic::AtomicUsize;
@@ -682,7 +681,7 @@ where
                 );
                 {
                     if update_in_graph {
-                        let mut out_nbrs: Vec<usize> = Vec::new();
+                        let out_nbrs: Vec<usize>;
                         {
                             let node_neighbors_f = self.final_graph[*des].read();
                             out_nbrs = node_neighbors_f.clone();
@@ -909,3 +908,6 @@ where
         Ok(obj)
     }
 }
+
+// #[cfg(test)]
+// mod diskannv1_test;
