@@ -14,8 +14,8 @@ use crate::metric_avx;
     MetricL1
 */
 pub trait Metric<T>: Sync + Send {
-    fn compare(arr_a: &[f32], arr_b: &[f32]) -> f32;
-    fn pre_process(arr_a: &[f32]) -> Option<Vec<f32>>;
+    fn compare(arr_a: &[T], arr_b: &[T]) -> f32;
+    fn pre_process(arr_a: &[T]) -> Option<Vec<T>>;
 }
 
 pub(crate) fn l2_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
@@ -26,10 +26,10 @@ pub(crate) fn l2_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
         .map(|(a, b)| (a - b).powi(2))
         .sum();
 }
-
+// use std::marker::PhantomData;
 #[derive(Debug)]
 pub struct MetricL2 {}
-impl<T> Metric<T> for MetricL2 {
+impl Metric<f32> for MetricL2 {
     #[allow(unused_variables)]
     fn pre_process(arr_a: &[f32]) -> Option<Vec<f32>> {
         None
@@ -56,6 +56,29 @@ impl<T> Metric<T> for MetricL2 {
         l2_similarity(arr_a, arr_b)
     }
 }
+impl Metric<u8> for MetricL2 {
+    fn pre_process(arr_a: &[u8]) -> Option<Vec<u8>> {
+        None
+    }
+    fn compare(arr_a: &[u8], arr_b: &[u8]) -> f32 {
+        0.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_l2() {
+        let mut vec1 = vec![
+            0u8, 0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 1u8, 1u8, 2u8, 3u8, 4u8,
+        ];
+        let mut vec2 = vec![
+            0u8, 0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 1u8, 1u8, 2u8, 3u8, 4u8,
+        ];
+        assert_eq!(0.0, MetricL2::compare(&vec1, &vec2));
+    }
+}
 
 pub(crate) fn l1_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     return arr_a
@@ -68,7 +91,7 @@ pub(crate) fn l1_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
 
 #[derive(Debug)]
 pub struct MetricL1 {}
-impl<T> Metric<T> for MetricL1 {
+impl Metric<f32> for MetricL1 {
     #[allow(unused_variables)]
     fn pre_process(arr_a: &[f32]) -> Option<Vec<f32>> {
         None
@@ -98,7 +121,7 @@ impl<T> Metric<T> for MetricL1 {
 
 #[derive(Debug)]
 pub struct Hamming {}
-impl<T> Metric<T> for Hamming {
+impl Metric<f32> for Hamming {
     #[allow(unused_variables)]
     fn pre_process(arr_a: &[f32]) -> Option<Vec<f32>> {
         None
