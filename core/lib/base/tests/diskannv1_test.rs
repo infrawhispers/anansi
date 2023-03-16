@@ -6,7 +6,7 @@ use std::io::Cursor;
 use std::path::Path;
 
 use base::ann;
-// use base::ann::ANNIndex;
+use base::ann::ANNIndex;
 // use base::ann::EId;
 use base::diskannv1;
 // use base::flat;
@@ -139,8 +139,12 @@ mod test {
                 indexing_alpha: 1.2,
             },
         };
-        let _ann_idx: diskannv1::DiskANNV1Index<metric::MetricL2> =
+        let ann_idx: diskannv1::DiskANNV1Index<metric::MetricL2> =
             ann::ANNIndex::new(&params).expect("error creating diskannv1 index");
+        assert!(
+            ann_idx.batch_insert(&eids, &base_vectors).is_ok(),
+            "unexpexted err on batch_insert to the vector store"
+        );
         // ann
     }
 }

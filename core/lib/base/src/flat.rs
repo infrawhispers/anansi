@@ -1,4 +1,3 @@
-use log::warn;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::atomic::AtomicUsize;
@@ -20,7 +19,7 @@ pub struct FlatParams {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct FlatIndex<TMetric: metric::Metric> {
+pub struct FlatIndex<TMetric: metric::Metric<f32>> {
     pub metric: PhantomData<TMetric>,
     pub(crate) params: Arc<FlatParams>,
     datastore: Arc<RwLock<HashMap<usize, RwLock<av_store::AlignedDataStore>>>>,
@@ -34,7 +33,7 @@ pub struct FlatIndex<TMetric: metric::Metric> {
 
 impl<TMetric> ann::ANNIndex for FlatIndex<TMetric>
 where
-    TMetric: metric::Metric,
+    TMetric: metric::Metric<f32>,
 {
     fn new(params: &ann::ANNParams) -> Result<FlatIndex<TMetric>, Box<dyn std::error::Error>> {
         let flat_params: &FlatParams = match params {
@@ -83,7 +82,7 @@ where
 
 impl<TMetric> FlatIndex<TMetric>
 where
-    TMetric: metric::Metric,
+    TMetric: metric::Metric<f32>,
 {
     pub fn new(params: &FlatParams) -> Result<FlatIndex<TMetric>, Box<dyn std::error::Error>> {
         let aligned_dim = ann::round_up(params.dim as u32) as usize;

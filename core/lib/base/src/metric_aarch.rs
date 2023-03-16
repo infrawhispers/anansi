@@ -133,7 +133,6 @@ unsafe fn popcnt_neon_vvnt(data: &[u8]) -> f32 {
     return cnt as f32;
 }
 
-// TODO(infrawhispers) - figure this one out!
 #[cfg(all(target_feature = "neon",))]
 #[inline(always)]
 pub(crate) unsafe fn hamming_similarity_aarch(arr_a: &[f32], arr_b: &[f32]) -> f32 {

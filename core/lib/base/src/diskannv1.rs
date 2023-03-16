@@ -1,6 +1,5 @@
 use crate::ann;
 use crate::ann::EId;
-use crate::ann::Node;
 use crate::av_store;
 use crate::av_store::AlignedDataStore;
 use crate::errors;
@@ -41,7 +40,7 @@ pub struct DiskANNParamsInternal {
 }
 
 #[allow(dead_code)]
-pub struct DiskANNV1Index<TMetric: metric::Metric> {
+pub struct DiskANNV1Index<TMetric: metric::Metric<f32>> {
     params: Arc<RwLock<DiskANNParamsInternal>>,
     metric: PhantomData<TMetric>,
 
@@ -65,7 +64,7 @@ enum QueryTarget<'a> {
 
 impl<TMetric> ann::ANNIndex for DiskANNV1Index<TMetric>
 where
-    TMetric: metric::Metric,
+    TMetric: metric::Metric<f32>,
 {
     fn new(params: &ann::ANNParams) -> Result<DiskANNV1Index<TMetric>, Box<dyn std::error::Error>> {
         let diskann_params: &DiskANNParams = match params {
@@ -77,7 +76,7 @@ where
         DiskANNV1Index::new(diskann_params)
     }
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-        unimplemented!()
+        self.batch_insert(eids, data)
     }
     fn insert(&self, eid: EId, data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         unimplemented!()
@@ -92,7 +91,7 @@ where
 
 impl<TMetric> DiskANNV1Index<TMetric>
 where
-    TMetric: metric::Metric,
+    TMetric: metric::Metric<f32>,
 {
     fn calculate_entry_point(
         &self,
@@ -878,8 +877,7 @@ where
         let tag_to_location: Arc<RwLock<HashMap<EId, usize>>> =
             Arc::new(RwLock::new(HashMap::new()));
 
-        let mut data: Arc<RwLock<AlignedDataStore>> =
-            Arc::new(RwLock::new(AlignedDataStore::new(0, 0)));
+        let data: Arc<RwLock<AlignedDataStore>>;
 
         {
             let params = paramsi.read();

@@ -13,7 +13,7 @@ use crate::metric_avx;
     MetricL2
     MetricL1
 */
-pub trait Metric: Sync + Send {
+pub trait Metric<T>: Sync + Send {
     fn compare(arr_a: &[f32], arr_b: &[f32]) -> f32;
     fn pre_process(arr_a: &[f32]) -> Option<Vec<f32>>;
 }
@@ -29,7 +29,7 @@ pub(crate) fn l2_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
 
 #[derive(Debug)]
 pub struct MetricL2 {}
-impl Metric for MetricL2 {
+impl<T> Metric<T> for MetricL2 {
     #[allow(unused_variables)]
     fn pre_process(arr_a: &[f32]) -> Option<Vec<f32>> {
         None
@@ -68,7 +68,7 @@ pub(crate) fn l1_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
 
 #[derive(Debug)]
 pub struct MetricL1 {}
-impl Metric for MetricL1 {
+impl<T> Metric<T> for MetricL1 {
     #[allow(unused_variables)]
     fn pre_process(arr_a: &[f32]) -> Option<Vec<f32>> {
         None
@@ -98,7 +98,7 @@ impl Metric for MetricL1 {
 
 #[derive(Debug)]
 pub struct Hamming {}
-impl Metric for Hamming {
+impl<T> Metric<T> for Hamming {
     #[allow(unused_variables)]
     fn pre_process(arr_a: &[f32]) -> Option<Vec<f32>> {
         None
