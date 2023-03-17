@@ -49,11 +49,18 @@ impl SIFT<'_> {
         // we store the dimensionality of the vector here
         // and then the components are (unsigned char|float | int)*d
         // documentation is avail here: http://corpus-texmex.irisa.fr/
-        let dims = rdr.read_u32::<LittleEndian>().unwrap();
-        let num_vectors = (data_r.len() as u32 / (4 + dims * 4)) as usize;
+        // let dims = 100;
+        let num_vectors = (data_r.len() as u32 / (4 + (num_closest as u32) * 4)) as usize;
         let mut data_w: Vec<u32> = Vec::with_capacity(num_vectors * num_closest as usize);
         for _ in 0..num_vectors {
-            for _j in 0..dims {
+            let dim = rdr.read_u32::<LittleEndian>().unwrap();
+            if dim != num_closest.try_into().unwrap() {
+                panic!(
+                    "dim != num_closest: dim: {} num_closest: {}",
+                    dim, num_closest
+                );
+            }
+            for _j in 0..dim {
                 data_w.push(rdr.read_u32::<LittleEndian>().unwrap());
             }
         }
@@ -108,7 +115,7 @@ impl SIFT<'_> {
 mod test {
     use super::*;
     #[test]
-    fn sift_small_exact() {
+    fn sift_small_ann() {
         let directory = Path::new("../../../../eval/data/siftsmall/");
         let dims: usize = 128;
         let loader = SIFT {
@@ -156,7 +163,8 @@ mod test {
             ann_idx.batch_insert(&eids, &base_vectors).is_ok(),
             "unexpexted err on batch_insert to the vector store"
         );
-        for i in 1.._num_truth_vectors {
+        let mut total_intersection_count: usize = 0;
+        for i in 0.._num_truth_vectors {
             let query_vec = query_vectors[(i * dims) as usize..(i * dims + dims) as usize].to_vec();
             let mut query_eid: ann::EId = [0u8; 16];
             BigEndian::write_uint(
@@ -164,16 +172,10 @@ mod test {
                 i.try_into().unwrap(),
                 std::mem::size_of::<usize>(),
             );
-
             let nns = ann_idx
                 .search(&query_vec, k)
                 .expect("unexpected error fetching the closest vectors");
             let mut nodes_found: HashSet<ann::EId> = HashSet::new();
-
-            // if i == 10 {
-            //     println!("{:?}", nns);
-            // }
-
             for nn in nns.iter() {
                 let mut eid: base::ann::EId = [0u8; 16];
                 BigEndian::write_uint(
@@ -184,12 +186,20 @@ mod test {
                 nodes_found.insert(eid);
             }
             let nodes_gnd_truth = _truth_vectors.get(&(query_eid)).unwrap();
-            println!(
-                "vec_id: {} percentage: {:?}",
+            let intersection_count = nodes_gnd_truth.intersection(&nodes_found).count();
+            total_intersection_count += intersection_count;
+            // individual queries for k = 10 yield {9,10} nn
+            assert!(
+                (intersection_count as f32 / (k as f32)) * 100.0 >= 90.0f32,
+                "for vid: {} | found: {}/{} ",
                 i,
-                (nodes_gnd_truth.intersection(&nodes_found).count() as f32) / (k as f32) * 100.0,
-                // nodes_found
+                intersection_count,
+                k
             );
         }
+        assert!(
+            (total_intersection_count as f32 / (k * _num_truth_vectors) as f32) > 0.95f32,
+            "unexpectedly lowered true neighbours found"
+        );
     }
 }

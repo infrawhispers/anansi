@@ -1,4 +1,5 @@
 #![feature(stdsimd)]
+#![feature(is_sorted)]
 #![cfg_attr(target_arch = "wasm32", feature(simd_wasm64))]
 
 pub mod ann;
@@ -7,6 +8,7 @@ pub mod diskannv1;
 mod errors;
 pub mod flat;
 pub mod metric;
+mod nn_query_scratch;
 mod nn_queue;
 // mod diskannv1_test;
 

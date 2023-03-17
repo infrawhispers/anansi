@@ -15,7 +15,7 @@ unsafe fn _mm256_reduce_add_ps(x: __m256) -> f32 {
 #[inline(always)]
 pub(crate) unsafe fn l2_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let result;
-    let niters = (length / 8) as isize;
+    let niters = (arr_a.len() / 8) as isize;
     let mut sum = _mm256_setzero_ps();
     let ptr_a = arr_a.as_ptr() as *mut i8;
     let ptr_a_f = arr_a.as_ptr();
@@ -38,9 +38,9 @@ pub(crate) unsafe fn l2_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
 
 #[cfg(all(target_feature = "fma", target_feature = "avx",))]
 #[inline(always)]
-unsafe fn l1_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
+pub(crate) unsafe fn l1_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let result;
-    let niters = (length / 8) as isize;
+    let niters = (arr_a.len() / 8) as isize;
     let mut sum = _mm256_setzero_ps();
     let ptr_a = arr_a.as_ptr() as *mut i8;
     let ptr_a_f = arr_a.as_ptr();

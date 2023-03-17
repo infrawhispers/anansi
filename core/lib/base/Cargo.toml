@@ -15,3 +15,4 @@ serde = { version = "1.0.152", features = ["derive"] }
 wasm-bindgen-test = "0.3.34"
 anyhow = "1.0.69"
 byteorder = "1.4.3"
+crossbeam-channel = "0.5.7"

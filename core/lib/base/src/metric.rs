@@ -37,7 +37,7 @@ impl Metric<f32> for MetricL2 {
 
     #[inline(always)]
     fn compare(arr_a: &[f32], arr_b: &[f32]) -> f32 {
-        #[cfg(all(target_arch = "x86_64", target_feature = "fma", target_feature = "avx",))]
+        #[cfg(all(target_feature = "fma", target_feature = "avx",))]
         {
             if is_x86_feature_detected!("avx") && is_x86_feature_detected!("fma") {
                 return unsafe { metric_avx::l2_similarity_avx(arr_a, arr_b) };
@@ -70,10 +70,10 @@ mod tests {
     use super::*;
     #[test]
     fn test_l2() {
-        let mut vec1 = vec![
+        let vec1 = vec![
             0u8, 0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 1u8, 1u8, 2u8, 3u8, 4u8,
         ];
-        let mut vec2 = vec![
+        let vec2 = vec![
             0u8, 0u8, 1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 1u8, 1u8, 2u8, 3u8, 4u8,
         ];
         assert_eq!(0.0, MetricL2::compare(&vec1, &vec2));

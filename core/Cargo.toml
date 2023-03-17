@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 base = { path = "lib/base" }
+crossbeam-channel = "0.5.7"
 log = "0.4.17"
 math = "0.10.0"
 parking_lot = { version = "0.12.1", features = ["nightly"] }
@@ -18,6 +19,3 @@ wasm-bindgen-test = "0.3.34"
 
 [workspace]
 members = ["lib/*"]
-
-[profile.release]
-opt-level = 3

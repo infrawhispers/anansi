@@ -4,16 +4,17 @@ use crate::av_store;
 use crate::av_store::AlignedDataStore;
 use crate::errors;
 use crate::metric;
+use crate::nn_query_scratch;
 use crate::nn_queue;
-use std::cmp;
-use std::ops::ControlFlow;
 
-// use sortedvec::sortedvec;
+use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use roaring::RoaringTreemap;
+use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
+use std::ops::ControlFlow;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::time::Instant;
@@ -31,16 +32,16 @@ pub struct DiskANNParams {
 
 #[allow(dead_code)]
 pub struct DiskANNParamsInternal {
-    params_e: DiskANNParams,
-    aligned_dim: usize,
-    data_len: usize,
-    num_frozen_pts: usize,
-    total_internal_points: usize,
-    nd: usize,
-    neighbor_len: usize,
-    node_size: usize,
-    start: usize,
-    saturate_graph: bool,
+    pub params_e: DiskANNParams,
+    pub aligned_dim: usize,
+    pub data_len: usize,
+    pub num_frozen_pts: usize,
+    pub total_internal_points: usize,
+    pub nd: usize,
+    pub neighbor_len: usize,
+    pub node_size: usize,
+    pub start: usize,
+    pub saturate_graph: bool,
 }
 
 #[allow(dead_code)]
@@ -50,13 +51,14 @@ pub struct DiskANNV1Index<TMetric: metric::Metric<f32>> {
 
     data: Arc<RwLock<av_store::AlignedDataStore>>,
     final_graph: Arc<Vec<RwLock<Vec<usize>>>>,
-    in_graph: Arc<Vec<RwLock<Vec<usize>>>>,
     location_to_tag: Arc<RwLock<HashMap<usize, EId>>>,
     tag_to_location: Arc<RwLock<HashMap<EId, usize>>>,
 
     id_increment: Arc<AtomicUsize>,
     delete_set: Arc<RwLock<HashSet<usize>>>,
     empty_slots: Arc<RwLock<HashSet<usize>>>,
+    s_scratch: Sender<nn_query_scratch::InMemoryQueryScratch>,
+    r_scratch: Receiver<nn_query_scratch::InMemoryQueryScratch>,
 }
 
 const GRAPH_SLACK_FACTOR: f64 = 1.3;
@@ -156,152 +158,95 @@ where
             visit_order.push(params_r.params_e.max_points);
         }
         let start = Instant::now();
-
-        // let num_items_linked = Arc::new(AtomicUsize::new(1));
-        // let num_items: usize = visit_order.len();
-        // let _num_items_linked = num_items_linked.clone();
-        // let _num_items = num_items.clone();
-        // let _handle = thread::spawn(move || {
-        //     let mut num_indexed = 0;
-        //     while num_indexed < _num_items {
-        //         thread::sleep(Duration::from_millis(500));
-        //         num_indexed = _num_items_linked.load(std::sync::atomic::Ordering::Relaxed);
-        //         DiskANNIndex::log_progress((num_indexed as f32) / (num_elements as f32))
-        //     }
-        // });
-
-        // the initial link which occurs
-        visit_order.par_iter_mut().for_each(|x| {
-            let vid: usize = *x;
-            let mut pool: Vec<ann::INode> =
-                Vec::with_capacity(params_r.params_e.indexing_queue_size * 2);
-            let mut visited: HashSet<usize> =
-                HashSet::with_capacity(params_r.params_e.indexing_queue_size * 2);
-            let mut des: Vec<usize> = Vec::with_capacity(
-                ((params_r.params_e.indexing_range as f64) * GRAPH_SLACK_FACTOR) as usize,
-            );
-            let mut best_l_nodes: Vec<ann::INode> = vec![
-                ann::INode {
-                    vid: 0,
-                    flag: false,
-                    distance: 0.0
-                };
-                params_r.params_e.indexing_queue_size + 1
-            ];
-            let mut inserted_into_pool_hs: HashSet<usize> = HashSet::new();
-            let mut inserted_into_pool_rb: RoaringTreemap = RoaringTreemap::new();
-            self.search_for_point_and_add_links(
-                vid,
-                &params_r,
-                &mut pool,
-                &mut visited,
-                &mut des,
-                &mut best_l_nodes,
-                &mut inserted_into_pool_hs,
-                &mut inserted_into_pool_rb,
-            );
-        });
-        // optimizing the graph we just built
-        visit_order.par_iter_mut().for_each(|x| {
-            let node: usize = *x;
-            let mut dummy_visited: HashSet<usize> = HashSet::new();
-            let mut dummy_pool: Vec<ann::INode> = Vec::new();
-            let mut new_out_neighbors: Vec<usize> = Vec::new();
-            let mut node_neighbors_f = self.final_graph[node].write();
-            let data = self.data.read();
-            if node_neighbors_f.len() > params_r.params_e.indexing_range {
-                for curr_nbr in node_neighbors_f.iter() {
-                    if !dummy_visited.contains(curr_nbr) && *curr_nbr != node {
-                        let arr_a: &[f32] = &data.data[*curr_nbr * params_r.aligned_dim
-                            ..(*curr_nbr * params_r.aligned_dim) + params_r.aligned_dim];
-                        let arr_b: &[f32] = &data.data[node * params_r.aligned_dim
-                            ..(node * params_r.aligned_dim) + params_r.aligned_dim];
-                        let nn = ann::INode {
-                            vid: *curr_nbr,
-                            distance: TMetric::compare(arr_a, arr_b),
-                            flag: true,
-                        };
-                        dummy_pool.push(nn);
-                        dummy_visited.insert(*curr_nbr);
-                    }
+        visit_order.par_iter().for_each(|vid| {
+            let mut pruned_list: Vec<usize> = Vec::new();
+            // let mut scratch: nn_query_scratch::InMemoryQueryScratch =
+            //     nn_query_scratch::InMemoryQueryScratch::new(&params_r);
+            let mut scratch: nn_query_scratch::InMemoryQueryScratch =
+                self.r_scratch.recv().unwrap();
+            scratch.clear();
+            self.search_for_point_and_prune(*vid, &mut pruned_list, &params_r, &mut scratch);
+            {
+                let mut segment = self.final_graph[*vid].write();
+                segment.clear();
+                for i in 0..pruned_list.len() {
+                    segment.push(pruned_list[i]);
                 }
+            }
+            self.inter_insert(
+                *vid,
+                &mut pruned_list,
+                &params_r,
+                &mut scratch,
+                &self.data.read(),
+            );
+            self.s_scratch.send(scratch).unwrap();
+        });
+        let data = &self.data.read();
+        visit_order.par_iter().for_each(|curr_vid| {
+            let should_prune: bool;
+            let graph_copy: Vec<usize>;
+            {
+                let nbrs = self.final_graph[*curr_vid].write();
+                should_prune = nbrs.len() > params_r.params_e.indexing_range;
+                graph_copy = nbrs.clone();
+            }
+            if should_prune {
+                let mut scratch: nn_query_scratch::InMemoryQueryScratch =
+                    self.r_scratch.recv().unwrap();
+                scratch.clear();
+
+                // let mut scratch: nn_query_scratch::InMemoryQueryScratch =
+                //     nn_query_scratch::InMemoryQueryScratch::new(&params_r);
+                let mut dummy_visited: HashSet<usize> = HashSet::new();
+                let mut dummy_pool: Vec<ann::INode> = Vec::new();
+                let mut new_out_neighbors: Vec<usize> = Vec::new();
+                graph_copy.iter().for_each(|nbr_vid| {
+                    if !dummy_visited.contains(nbr_vid) && *nbr_vid != *curr_vid {
+                        let arr_a: &[f32] = &data.data[*curr_vid * params_r.aligned_dim
+                            ..(*curr_vid * params_r.aligned_dim) + params_r.aligned_dim];
+                        let arr_b: &[f32] = &data.data[nbr_vid * params_r.aligned_dim
+                            ..(nbr_vid * params_r.aligned_dim) + params_r.aligned_dim];
+                        dummy_pool.push(ann::INode {
+                            vid: *nbr_vid,
+                            distance: TMetric::compare(arr_a, arr_b),
+                            flag: false,
+                        });
+                        dummy_visited.insert(*nbr_vid);
+                    }
+                });
+                scratch.pool = dummy_pool;
                 self.prune_neighbors(
-                    node,
-                    &mut dummy_pool,
+                    *curr_vid,
                     &mut new_out_neighbors,
                     &params_r,
-                    &data,
+                    &mut scratch,
+                    data,
                 );
-                node_neighbors_f.clear();
-                node_neighbors_f.resize(new_out_neighbors.len(), 0);
-                node_neighbors_f
-                    .splice(..new_out_neighbors.len(), new_out_neighbors.iter().cloned());
+                {
+                    let mut segment = self.final_graph[*curr_vid].write();
+                    segment.clear();
+                    for i in 0..new_out_neighbors.len() {
+                        segment.push(new_out_neighbors[i]);
+                    }
+                }
+                self.s_scratch.send(scratch).unwrap();
             }
         });
         println!("link time: {:?}", start.elapsed());
     }
 
-    // this maintains our sorted invariant using a binary search
-    // lifted exactly from the original implementation
-    fn insert_into_pool(
-        &self,
-        best_l_nodes: &mut Vec<ann::INode>,
-        k: usize,
-        nn: ann::INode,
-    ) -> usize {
-        let mut left: usize = 0;
-        let mut right: usize = k - 1;
-        if best_l_nodes[left].distance > nn.distance {
-            best_l_nodes.insert(left, nn);
-            return left;
-        }
-        if best_l_nodes[right].distance < nn.distance {
-            best_l_nodes[k] = nn;
-            return k;
-        }
-        while right > 1 && left < right - 1 {
-            let mid: usize = (left + right) / 2;
-            if best_l_nodes[mid].distance > nn.distance {
-                right = mid;
-            } else {
-                left = mid;
-            }
-        }
-        while left > 0 {
-            if best_l_nodes[left].distance < nn.distance {
-                break;
-            }
-            if best_l_nodes[left].vid == nn.vid {
-                return k + 1;
-            }
-            left -= 1;
-        }
-        if best_l_nodes[left].vid == nn.vid || best_l_nodes[right].vid == nn.vid {
-            return k + 1;
-        }
-        best_l_nodes.insert(right, nn);
-        return right;
-    }
-
     fn iterate_to_fixed_point(
         &self,
+        target: QueryTarget,
         params_r: &DiskANNParamsInternal,
-        pool: &mut Vec<ann::INode>,
-        visited: &mut HashSet<usize>,
-        des: &mut Vec<usize>,
-        best_l_nodes_s: &mut Vec<ann::INode>,
-        inserted_into_pool_hs: &mut HashSet<usize>,
-        inserted_into_pool_rb: &mut RoaringTreemap,
-        // ----
         init_ids: &mut Vec<usize>,
+        scratch: &mut nn_query_scratch::InMemoryQueryScratch,
         ret_frozen: bool,
         is_search: bool,
-        l_size: usize,
-        target: QueryTarget,
     ) -> (usize, usize) {
-        // pool -> expanded_nodes_info
-        // visited -> expanded_nodes_ids
         let data = self.data.read();
+        // pull out the slice we are comparing against
         let arr_b: &[f32];
         match target {
             QueryTarget::VId(vid) => {
@@ -312,79 +257,58 @@ where
                 arr_b = v;
             }
         }
-        let mut best_l_nodes =
-            nn_queue::NNPriorityQueue::new(params_r.params_e.indexing_queue_size);
-        if !is_search {
-            pool.clear();
-            visited.clear();
-            des.clear();
-        }
-        let mut l: usize = 0;
+        let expanded_nodes: &mut Vec<ann::INode> = &mut scratch.pool;
+        let best_l_nodes: &mut nn_queue::NNPriorityQueue = &mut scratch.best_l_nodes;
+        let inserted_into_pool_hs: &mut HashSet<usize> = &mut scratch.inserted_into_pool_hs;
+        let inserted_into_pool_rb: &mut RoaringTreemap = &mut scratch.inserted_into_pool_rb;
+        let id_scratch: &mut Vec<usize> = &mut scratch.id_scratch;
+        let dist_scratch: &mut Vec<f32> = &mut scratch.dist_scratch;
+        // debug_assert!(id_scratch.len() == 0, "scratch space must be cleared");
+        // debug_assert!(expanded_nodes.len() == 0, "scratch space must be cleared");
         let fast_iterate: bool =
             params_r.params_e.max_points + params_r.num_frozen_pts <= MAX_POINTS_FOR_USING_BITSET;
-        // TOOD(infrawhispers) - cpp implementation needs us to reserve space in the bitset  - there is no
-        // reserve for the rust impl, look into the bitmap details
-        // if (fast_iterate) {
-        //     auto total_num_points = _max_points + _num_frozen_pts;
-        //     if (inserted_into_pool_bs.size() < total_num_points) {
-        //       // hopefully using 2X will reduce the number of allocations.
-        //       auto resize_size = 2 * total_num_points > MAX_POINTS_FOR_USING_BITSET
-        //                              ? MAX_POINTS_FOR_USING_BITSET
-        //                              : 2 * total_num_points;
-        //       inserted_into_pool_bs.resize(resize_size);
-        //     }
-        //   }
-        for id in init_ids.iter() {
-            if *id >= params_r.params_e.max_points + params_r.num_frozen_pts {
+
+        init_ids.iter().for_each(|nn_id| {
+            if *nn_id >= params_r.params_e.max_points + params_r.num_frozen_pts {
                 // TODO(infrawhispers) - get rid of this panic, this isn't *really* needed
                 panic!(
                     "out of range loc: {} max_points: {}, num_frozen_pts: {}",
-                    *id, params_r.params_e.max_points, params_r.num_frozen_pts
+                    *nn_id, params_r.params_e.max_points, params_r.num_frozen_pts
                 );
             }
-            let arr_a: &[f32] = &data.data
-                [*id * params_r.aligned_dim..(*id * params_r.aligned_dim) + params_r.aligned_dim];
-            let nn = ann::INode {
-                vid: *id,
-                distance: TMetric::compare(arr_a, arr_b),
-                flag: true,
-            };
-            if fast_iterate {
-                if !inserted_into_pool_rb.contains((*id).try_into().unwrap()) {
-                    inserted_into_pool_rb.insert((*id).try_into().unwrap());
-                    best_l_nodes.insert(nn);
-                    // println!("inserting into best_l_nodes");
-                    // best_l_nodes[l] = nn;
-                    // l += 1
-                }
+            let is_not_visited = if fast_iterate {
+                !inserted_into_pool_rb.contains((*nn_id).try_into().unwrap())
             } else {
-                if !inserted_into_pool_hs.contains(id) {
-                    inserted_into_pool_hs.insert(*id);
-                    best_l_nodes.insert(nn);
-                    // println!("inserting into best_l_nodes");
-                    // best_l_nodes[l] = nn;
-                    // l += 1
+                !inserted_into_pool_hs.contains(nn_id)
+            };
+            if is_not_visited {
+                if fast_iterate {
+                    inserted_into_pool_rb.insert((*nn_id).try_into().unwrap());
+                } else {
+                    inserted_into_pool_hs.insert(*nn_id);
                 }
+                let arr_a: &[f32] = &data.data[*nn_id * params_r.aligned_dim
+                    ..(*nn_id * params_r.aligned_dim) + params_r.aligned_dim];
+                let nn = ann::INode {
+                    vid: *nn_id,
+                    distance: TMetric::compare(arr_a, arr_b),
+                    flag: false,
+                };
+                best_l_nodes.insert(nn);
             }
-        }
-
+        });
         let hops: usize = 0;
         let mut cmps: usize = 0;
-        let mut nbrs_potential: Vec<ann::INode> =
-            Vec::with_capacity(params_r.params_e.indexing_queue_size + 1);
-
         while best_l_nodes.has_unexpanded_node() {
             let nbr = best_l_nodes.closest_unexpanded();
             let nbr_vid = nbr.vid;
             if !is_search
                 && (nbr_vid != params_r.start || params_r.num_frozen_pts == 0 || ret_frozen)
             {
-                pool.push(nbr);
-                visited.insert(nbr_vid);
+                expanded_nodes.push(nbr);
             }
-
-            des.clear();
-            nbrs_potential.clear();
+            id_scratch.clear();
+            dist_scratch.clear();
             {
                 let _final_graph = self.final_graph[nbr_vid].read();
                 for m in 0.._final_graph.len() {
@@ -394,85 +318,46 @@ where
                         edge = _final_graph[m],
                         vertex = nbr_vid,
                     );
-                    let id = _final_graph[m];
+                    let nn_id = _final_graph[m];
                     let is_not_visited = if fast_iterate {
-                        !inserted_into_pool_rb.contains((id).try_into().unwrap())
+                        !inserted_into_pool_rb.contains((nn_id).try_into().unwrap())
                     } else {
-                        !inserted_into_pool_hs.contains(&id)
+                        !inserted_into_pool_hs.contains(&nn_id)
                     };
                     if is_not_visited {
-                        des.push(_final_graph[m]);
+                        id_scratch.push(_final_graph[m]);
                     }
                 }
             }
-            // mark things that we have already visited...
-            des.iter().for_each(|id| {
+            // mark nodes visited
+            id_scratch.iter().for_each(|nn| {
                 if fast_iterate {
-                    inserted_into_pool_rb.insert((*id).try_into().unwrap());
+                    inserted_into_pool_rb.insert((*nn).try_into().unwrap());
                 } else {
-                    inserted_into_pool_hs.insert(*id);
+                    inserted_into_pool_hs.insert(*nn);
                 }
             });
-            for m in 0..des.len() {
-                let id: usize = des[m];
-                // if m + 1 < des.len() {
-                // let nextn: usize = des[m + 1];
-                //  // TODO(infrawhispers) - implement a prefetch that is architecture
-                //  // dependent, we probably want something like:
-                //  // TMetric::prefetch(vec: &[f32])
+            debug_assert!(dist_scratch.len() == 0);
+            let mut nbrs_potential: Vec<ann::INode> = Vec::with_capacity(id_scratch.len());
+            id_scratch.iter().enumerate().for_each(|(i, nn)| {
+                // if i + 1 < id_scratch.len() {
+                // // TODO(infrawhispers) there is some pre-fetch funny biz that happens in the original implementation
                 // }
-                let arr_a: &[f32] = &data.data
-                    [id * params_r.aligned_dim..(id * params_r.aligned_dim) + params_r.aligned_dim];
+                let arr_a: &[f32] = &data.data[*nn * params_r.aligned_dim
+                    ..(*nn * params_r.aligned_dim) + params_r.aligned_dim];
+                let dist: f32 = TMetric::compare(arr_a, arr_b);
                 nbrs_potential.push(ann::INode {
-                    vid: id,
-                    distance: TMetric::compare(arr_a, arr_b),
+                    vid: *nn,
+                    distance: dist,
                     flag: false,
-                });
-            }
-            // return (hops, cmps);
-            cmps += des.len();
-            nbrs_potential.iter().for_each(|nbr| {
-                best_l_nodes.insert(nbr.clone());
-            })
+                })
+            });
+            cmps += id_scratch.len();
+            nbrs_potential.iter().for_each(|nn| {
+                best_l_nodes.insert(*nn);
+            });
         }
-        best_l_nodes_s[..params_r.params_e.indexing_queue_size]
-            .copy_from_slice(&best_l_nodes.data[..params_r.params_e.indexing_queue_size]);
-        // best_l_nodes_s.copy_from_slice(&best_l_nodes[..]);
-        // println!("{:?}", best_l_nodes_s);
         (hops, cmps)
-    }
-
-    fn get_expanded_nodes(
-        &self,
-        vid: usize,
-        params_r: &DiskANNParamsInternal,
-        pool: &mut Vec<ann::INode>,
-        visited: &mut HashSet<usize>,
-        des: &mut Vec<usize>,
-        best_l_nodes: &mut Vec<ann::INode>,
-        inserted_into_pool_hs: &mut HashSet<usize>,
-        inserted_into_pool_rb: &mut RoaringTreemap,
-        // ----
-        init_ids: &mut Vec<usize>,
-    ) {
-        let vid_idx: usize = params_r.aligned_dim * vid;
-        if init_ids.len() == 0 {
-            init_ids.push(params_r.start);
-        }
-        let _ = self.iterate_to_fixed_point(
-            params_r,
-            pool,
-            visited,
-            des,
-            best_l_nodes,
-            inserted_into_pool_hs,
-            inserted_into_pool_rb,
-            init_ids,
-            true,
-            false,
-            params_r.params_e.indexing_queue_size,
-            QueryTarget::VId(vid),
-        );
     }
 
     fn occlude_list(
@@ -482,133 +367,101 @@ where
         alpha: f32,
         degree: usize,
         maxc: usize,
-        result: &mut Vec<ann::INode>,
+        result: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
         data: &AlignedDataStore,
     ) {
         if pool.len() == 0 {
             return;
         }
+        debug_assert!(pool.is_sorted());
+        debug_assert!(result.len() == 0);
         if pool.len() > maxc {
             pool.resize(
                 maxc,
                 ann::INode {
                     vid: 0,
-                    distance: 0.0,
+                    distance: std::f32::MAX,
                     flag: false,
                 },
             );
         }
+
         let mut occlude_factor = vec![0.0; pool.len()];
         let mut curr_alpha = 1.0;
         while curr_alpha <= alpha && result.len() < degree {
-            for (iter1, ele1) in pool.iter().enumerate() {
+            for idx_1 in 0..pool.len() {
+                let nn = pool[idx_1];
+                if occlude_factor[idx_1] > curr_alpha {
+                    continue;
+                }
                 if result.len() >= degree {
                     break;
                 }
-                if occlude_factor[iter1] > curr_alpha {
-                    continue;
+                occlude_factor[idx_1] = f32::MAX;
+                if nn.vid != vid {
+                    result.push(nn.vid);
                 }
-                occlude_factor[iter1] = f32::MAX;
-                result.push(*ele1);
-                let space = iter1 + 1;
-                if space >= pool.len() {
-                    continue;
-                }
-                for (iter2, ele2) in pool.iter().enumerate() {
-                    if iter2 < iter1 + 1 {
+                for idx2 in idx_1 + 1..pool.len() {
+                    let nn_2 = pool[idx2];
+                    if occlude_factor[idx2] > alpha {
                         continue;
                     }
-                    if occlude_factor[iter2] > alpha {
-                        continue;
-                    }
-                    let arr_a: &[f32] = &data.data[ele2.vid * params_r.aligned_dim
-                        ..(ele2.vid * params_r.aligned_dim) + params_r.aligned_dim];
-                    let arr_b: &[f32] = &data.data[ele1.vid * params_r.aligned_dim
-                        ..(ele1.vid * params_r.aligned_dim) + params_r.aligned_dim];
+                    let arr_a: &[f32] = &data.data[nn.vid * params_r.aligned_dim
+                        ..(nn.vid * params_r.aligned_dim) + params_r.aligned_dim];
+                    let arr_b: &[f32] = &data.data[pool[idx2].vid * params_r.aligned_dim
+                        ..(pool[idx2].vid * params_r.aligned_dim) + params_r.aligned_dim];
                     let djk: f32 = TMetric::compare(arr_a, arr_b);
-                    if djk == 0.0 {
-                        occlude_factor[iter2] = f32::MAX;
+                    occlude_factor[idx2] = if djk == 0.0 {
+                        f32::MAX
                     } else {
-                        occlude_factor[iter2] =
-                            occlude_factor[iter2].max(pool[iter2].distance / djk);
+                        occlude_factor[idx2].max(nn_2.distance / djk)
                     }
-                    // TODO(infrawhispers) - there is more work needed to handle the
-                    // inner product calculation
                 }
             }
             curr_alpha *= 1.2;
         }
     }
 
-    fn prune_neighbors_impl(
-        &self,
-        vid: usize,
-        pool: &mut Vec<ann::INode>,
-        range: usize,
-        max_candidate_size: usize,
-        alpha: f32,
-        pruned_list: &mut Vec<usize>,
-        params_r: &DiskANNParamsInternal,
-        data: &AlignedDataStore,
-    ) {
-        if pool.len() == 0 {
-            return;
-        }
-        pool.sort_by(|a, b| a.cmp(b));
-        let mut result = Vec::with_capacity(range);
-        self.occlude_list(
-            vid,
-            pool,
-            alpha,
-            range,
-            max_candidate_size,
-            &mut result,
-            params_r,
-            data,
-        );
-        pruned_list.clear();
-        assert!(result.len() <= params_r.params_e.indexing_range);
-        for nn in result.into_iter() {
-            if nn.vid != vid {
-                pruned_list.push(nn.vid);
-            }
-        }
-
-        if params_r.saturate_graph && alpha > 1.0 {
-            let mut i: usize = 0;
-            while i < pool.len() && pruned_list.len() < range {
-                // this should be a binary search over the items!
-                let node = pruned_list.iter().find(|&&i| i == pool[i].vid);
-                match node {
-                    Some(_x) => (),
-                    None => {
-                        pruned_list.push(pool[i].vid);
-                    }
-                }
-                i += 1;
-            }
-        }
-    }
-
     fn prune_neighbors(
         &self,
         vid: usize,
-        pool: &mut Vec<ann::INode>,
         pruned_list: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
+        scratch: &mut nn_query_scratch::InMemoryQueryScratch,
         data: &AlignedDataStore,
     ) {
-        self.prune_neighbors_impl(
-            vid,
-            pool,
-            params_r.params_e.indexing_range,
-            params_r.params_e.indexing_maxc,
-            params_r.params_e.indexing_alpha,
-            pruned_list,
-            params_r,
-            data,
-        )
+        let pool = &mut scratch.pool;
+        if pool.len() == 0 {
+            pruned_list.clear();
+            return;
+        }
+        let range = params_r.params_e.indexing_range;
+        let alpha = params_r.params_e.indexing_alpha;
+        let maxc = params_r.params_e.indexing_maxc;
+
+        pool.sort_by(|a, b| a.cmp(b));
+        // println!("pool: {:?} | vid: {:?}", pool, vid);
+        pruned_list.clear();
+        pruned_list.reserve(range);
+        self.occlude_list(vid, pool, alpha, range, maxc, pruned_list, params_r, data);
+        debug_assert!(
+            pruned_list.len() <= range,
+            "pruned_list: {:?}, range: {:?}",
+            pruned_list.len(),
+            range
+        );
+
+        if params_r.saturate_graph && alpha > 1.0 {
+            for i in 0..pool.len() {
+                if pruned_list.len() >= range {
+                    break;
+                }
+                if !pruned_list.contains(&pool[i].vid) && pool[i].vid != vid {
+                    pruned_list.push(pool[i].vid)
+                }
+            }
+        }
     }
 
     fn inter_insert(
@@ -616,33 +469,31 @@ where
         vid: usize,
         pruned_list: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
+        scratch: &mut nn_query_scratch::InMemoryQueryScratch,
         data: &AlignedDataStore,
     ) {
-        let update_in_graph = true;
+        debug_assert!(!pruned_list.is_empty(), "inter_insert:: vid: {:?}", vid);
         let range = params_r.params_e.indexing_range;
         for des in pruned_list.iter() {
+            debug_assert!(*des < params_r.params_e.max_points + params_r.num_frozen_pts);
             let mut copy_of_neighhbors: Vec<usize> = Vec::new();
-            let mut add: bool = false;
             let mut prune_needed: bool = false;
             {
                 let mut node_neighbors_f = self.final_graph[*des].write();
-                add = !node_neighbors_f.iter().any(|&i| i == vid);
-                if add {
+                if !node_neighbors_f.iter().any(|&i| i == vid) {
                     if node_neighbors_f.len() < ((GRAPH_SLACK_FACTOR * (range as f64)) as usize) {
                         node_neighbors_f.push(vid);
-                        if update_in_graph {
-                            let mut node_neighbors_i = self.in_graph[vid].write();
-                            node_neighbors_i.push(*des);
-                        }
                         prune_needed = false;
                     } else {
                         copy_of_neighhbors = node_neighbors_f.clone();
+                        copy_of_neighhbors.push(vid);
                         prune_needed = true;
                     }
                 }
             }
+
             if prune_needed {
-                copy_of_neighhbors.push(vid);
+                // println!("prune is needed: {}", vid);
                 let reserve_size: usize =
                     ((range as f64) * GRAPH_SLACK_FACTOR * 1.05).ceil() as usize;
                 let mut dummy_visited: HashSet<usize> = HashSet::with_capacity(reserve_size);
@@ -664,186 +515,79 @@ where
                 }
 
                 let mut new_out_neighbors: Vec<usize> = Vec::new();
+                scratch.pool = dummy_pool;
                 self.prune_neighbors(
                     *des,
-                    &mut dummy_pool,
                     &mut new_out_neighbors,
                     params_r,
-                    data,
+                    scratch,
+                    &self.data.read(),
                 );
                 {
-                    if update_in_graph {
-                        let out_nbrs: Vec<usize>;
-                        {
-                            let node_neighbors_f = self.final_graph[*des].read();
-                            out_nbrs = node_neighbors_f.clone();
-                        }
-                        for out_nbr in out_nbrs.iter() {
-                            let mut out_neighbors_i = self.in_graph[*out_nbr].write();
-                            out_neighbors_i.retain(|&x| x != *des);
-                        }
-                    }
-                    // write out new graph structure for node: des
-                    let mut node_neighbors_f = self.final_graph[*des].write();
-                    node_neighbors_f.clear();
-                    for new_nbr in new_out_neighbors.iter() {
-                        node_neighbors_f.push(*new_nbr);
-                    }
-                    if update_in_graph {
-                        // write out new graph structure for things hitting des
-                        for new_nbr in new_out_neighbors.iter() {
-                            let mut node_neighbors_i = self.in_graph[*new_nbr].write();
-                            node_neighbors_i.push(*des);
-                        }
+                    let mut segment = self.final_graph[*des].write();
+                    segment.clear();
+                    for i in 0..new_out_neighbors.len() {
+                        segment.push(new_out_neighbors[i]);
                     }
                 }
             }
         }
     }
 
-    fn search_for_point_and_add_links(
+    fn search_for_point_and_prune(
         &self,
         vid: usize,
+        pruned_list: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
-        pool: &mut Vec<ann::INode>,
-        visited: &mut HashSet<usize>,
-        des: &mut Vec<usize>,
-        best_l_nodes: &mut Vec<ann::INode>,
-        inserted_into_pool_hs: &mut HashSet<usize>,
-        inserted_into_pool_rb: &mut RoaringTreemap,
+        scratch: &mut nn_query_scratch::InMemoryQueryScratch,
     ) {
         let mut init_ids: Vec<usize> = Vec::new();
         init_ids.push(params_r.start);
-        self.get_expanded_nodes(
-            vid,
+        self.iterate_to_fixed_point(
+            QueryTarget::VId(vid),
             params_r,
-            pool,
-            visited,
-            des,
-            best_l_nodes,
-            inserted_into_pool_hs,
-            inserted_into_pool_rb,
             &mut init_ids,
+            scratch,
+            true,
+            false,
         );
 
         {
-            let delete_set_r = self.delete_set.read();
-            let mut idx: usize = 0;
-            while idx < pool.len() {
-                if pool[idx].vid == vid {
-                    pool.remove(idx);
-                    visited.remove(&vid);
-                    idx = if idx == 0 { 0 } else { idx - 1 }
-                } else if delete_set_r.get(&pool[idx].vid) != None {
-                    pool.remove(idx);
-                    visited.remove(&vid);
-                    idx = if idx == 0 { 0 } else { idx - 1 }
-                } else {
-                    idx += 1;
-                }
-            }
+            let pool = &mut scratch.pool;
+            pool.retain(|&nn| nn.vid != vid);
         }
-        let data = self.data.read();
-        // println!("pool len: {:?}", pool.len());
-        let mut pruned_list: Vec<usize> = Vec::new();
-        // assert!(!pruned_list.is_empty(), );
-
-        self.prune_neighbors(vid, pool, &mut pruned_list, params_r, &data);
-        {
-            // necessary to support the eager delete operation
-            let indices = self.final_graph[vid].write().clone();
-            for idx in indices.iter() {
-                let mut node_neighbors_i = self.in_graph[*idx].write();
-                node_neighbors_i.retain(|&x| x != vid);
-            }
-        }
-        {
-            let mut node_neighbors_f = self.final_graph[vid].write();
-            node_neighbors_f.clear();
-            node_neighbors_f.shrink_to_fit();
-            node_neighbors_f.reserve(
-                ((params_r.params_e.indexing_range as f64) * GRAPH_SLACK_FACTOR * 1.05).ceil()
-                    as usize,
-            );
-            for link in pruned_list.iter() {
-                node_neighbors_f.push(*link);
-                let mut node_neighbors_i = self.in_graph[*link].write();
-                node_neighbors_i.push(vid);
-            }
-        }
-        self.inter_insert(vid, &mut pruned_list, params_r, &data)
-    }
-
-    fn update_in_graph(&self) {
-        for (idx, nbrs) in self.final_graph.iter().enumerate() {
-            let fg_nbrs = nbrs.write();
-            let mut ig_nbrs = self.in_graph[idx].write();
-            ig_nbrs.clear();
-            ig_nbrs.resize(fg_nbrs.len(), 0);
-            ig_nbrs.splice(..fg_nbrs.len(), fg_nbrs.iter().cloned());
-        }
+        debug_assert!(pruned_list.len() == 0);
+        self.prune_neighbors(vid, pruned_list, params_r, scratch, &self.data.read());
+        debug_assert!(
+            pruned_list.len() != 0,
+            "vid: {:?}, pool is of : {:?}, pruned_list is of: {:?}",
+            vid,
+            scratch.pool,
+            pruned_list,
+        );
     }
 
     fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
         let mut init_ids: Vec<usize> = Vec::new();
         let mut q_aligned;
-        // {
         let params_r = self.params.read();
         if init_ids.len() == 0 {
             init_ids.push(params_r.start);
         }
         q_aligned = AlignedDataStore::new(params_r.aligned_dim, 1);
-        // }
         q_aligned.data[0..q.len()].clone_from_slice(q);
-        let mut pool: Vec<ann::INode> =
-            Vec::with_capacity(params_r.params_e.indexing_queue_size * 2);
-        let mut visited: HashSet<usize> =
-            HashSet::with_capacity(params_r.params_e.indexing_queue_size * 2);
-        let mut des: Vec<usize> = Vec::with_capacity(
-            ((params_r.params_e.indexing_range as f64) * GRAPH_SLACK_FACTOR) as usize,
-        );
-        let mut best_l_nodes: Vec<ann::INode> = vec![
-            ann::INode {
-                vid: 0,
-                flag: false,
-                distance: 0.0
-            };
-            params_r.params_e.indexing_queue_size + 1
-        ];
-        let mut inserted_into_pool_hs: HashSet<usize> = HashSet::new();
-        let mut inserted_into_pool_rb: RoaringTreemap = RoaringTreemap::new();
-        /*
-            &self,
-            params_r: &DiskANNParamsInternal,
-            pool: &mut Vec<ann::INode>,
-            visited: &mut HashSet<usize>,
-            des: &mut Vec<usize>,
-            best_l_nodes_s: &mut Vec<ann::INode>,
-            inserted_into_pool_hs: &mut HashSet<usize>,
-            inserted_into_pool_rb: &mut RoaringTreemap,
-            // ----
-            init_ids: &mut Vec<usize>,
-            ret_frozen: bool,
-            is_search: bool,
-            l_size: usize,
-            target: QueryTarget,
-        */
-        let (hops, cmps): (usize, usize) = self.iterate_to_fixed_point(
+        let mut scratch: nn_query_scratch::InMemoryQueryScratch =
+            nn_query_scratch::InMemoryQueryScratch::new(&params_r);
+        self.iterate_to_fixed_point(
+            QueryTarget::Vector(&q_aligned.data),
             &params_r,
-            &mut pool,
-            &mut visited,
-            &mut des,
-            &mut best_l_nodes,
-            &mut inserted_into_pool_hs,
-            &mut inserted_into_pool_rb,
             &mut init_ids,
+            &mut scratch,
             true,
             true,
-            140,
-            QueryTarget::Vector(&q_aligned.data[..]),
         );
         let mut filtered: Vec<ann::Node> = Vec::with_capacity(k + 1);
-        best_l_nodes.iter().try_for_each(|nn| {
+        scratch.best_l_nodes.data.iter().try_for_each(|nn| {
             if filtered.len() > k {
                 return ControlFlow::Break(nn);
             }
@@ -865,14 +609,11 @@ where
             if paramsw.num_frozen_pts > 0 {
                 paramsw.start = paramsw.params_e.max_points;
             } else {
-                // let mut dataw = self.data.write().unwrap();
-                // paramsw.start = DiskANNIndex::calculate_entry_point(&paramsw, &mut dataw);
+                paramsw.start = self.calculate_entry_point(&paramsw, &self.data.read());
             }
         }
-        // let paramsr = self.params.read();
         self.generate_frozen_point();
         self.link();
-        self.update_in_graph();
         let mut max: usize = 0;
         let mut min: usize = usize::MAX;
         let mut total: usize = 0;
@@ -893,10 +634,6 @@ where
             min,
             cnt,
         );
-        // for idx in 0..100 {
-        //     let fg_nbrs = self.final_graph[idx].read();
-        //     println!("{} -> {:?}", idx, fg_nbrs);
-        // }
     }
 
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
@@ -959,12 +696,6 @@ where
                 .take(total_internal_points)
                 .collect();
         let final_graph = Arc::new(shared);
-        let shared_in: Vec<_> =
-            std::iter::repeat_with(|| (RwLock::new(Vec::with_capacity(reserve_size))))
-                .take(total_internal_points)
-                .collect();
-
-        let in_graph = Arc::new(shared_in);
         let empty_slots: Arc<RwLock<HashSet<usize>>> = Arc::new(RwLock::new(HashSet::new()));
         let delete_set: Arc<RwLock<HashSet<usize>>> = Arc::new(RwLock::new(HashSet::new()));
 
@@ -986,22 +717,27 @@ where
                 params.aligned_dim,
             )));
         }
+        let num_scratch_spaces = 12;
+        let (s, r) = bounded(num_scratch_spaces);
+        for i in 0..num_scratch_spaces {
+            let scratch = nn_query_scratch::InMemoryQueryScratch::new(&paramsi.read());
+            s.send(scratch).unwrap();
+        }
+
         let id_increment = Arc::new(AtomicUsize::new(0));
         let obj: DiskANNV1Index<TMetric> = DiskANNV1Index::<TMetric> {
             params: paramsi,
             data,
             final_graph,
-            in_graph,
             location_to_tag,
             tag_to_location,
             id_increment,
             delete_set,
             empty_slots,
             metric: PhantomData,
+            s_scratch: s,
+            r_scratch: r,
         };
         Ok(obj)
     }
 }
-
-// #[cfg(test)]
-// mod diskannv1_test;
