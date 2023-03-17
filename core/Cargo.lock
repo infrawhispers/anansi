@@ -13,6 +13,7 @@ dependencies = [
  "rayon",
  "roaring",
  "serde",
+ "sorted-vec",
  "wasm-bindgen-test",
 ]
 
@@ -482,6 +483,12 @@ name = "smallvec"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a507befe795404456341dfab10cef66ead4c041f62b8b11bbb92bffe5d0953e0"
+
+[[package]]
+name = "sorted-vec"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0047b8207660638866f228b4b4147e98cc8efb190a70cd63d5cb899a4a539a8"
 
 [[package]]
 name = "spmc"

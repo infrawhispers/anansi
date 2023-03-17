@@ -13,9 +13,11 @@ parking_lot = { version = "0.12.1", features = ["nightly"] }
 rayon = "1.6.1"
 roaring = "0.10.1"
 serde = "1.0.152"
+sorted-vec = "0.8.2"
 wasm-bindgen-test = "0.3.34"
 
 [workspace]
 members = ["lib/*"]
 
-
+[profile.release]
+opt-level = 3

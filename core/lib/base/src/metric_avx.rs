@@ -1,6 +1,7 @@
 use core::arch::x86_64::*;
 
 #[cfg(all(target_feature = "fma", target_feature = "avx",))]
+#[inline(always)]
 unsafe fn _mm256_reduce_add_ps(x: __m256) -> f32 {
     // this is fine since AVX is a superset of SSE - meaning we are guaranted
     // to have the SSE instructions available to us
@@ -11,6 +12,7 @@ unsafe fn _mm256_reduce_add_ps(x: __m256) -> f32 {
 }
 
 #[cfg(all(target_feature = "fma", target_feature = "avx",))]
+#[inline(always)]
 pub(crate) unsafe fn l2_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let result;
     let niters = (length / 8) as isize;
@@ -35,6 +37,7 @@ pub(crate) unsafe fn l2_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
 }
 
 #[cfg(all(target_feature = "fma", target_feature = "avx",))]
+#[inline(always)]
 unsafe fn l1_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     let result;
     let niters = (length / 8) as isize;
@@ -56,4 +59,29 @@ unsafe fn l1_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
     }
     result = self::_mm256_reduce_add_ps(sum);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_euclid() {
+        #[cfg(all(target_arch = "avx", target_feature = "fma",))]
+        if std::arch::is_x86_feature_detected!("fma") && std::arch::is_x86_feature_detected!("avx")
+        {
+            let v1: Vec<f32> = vec![
+                10., 11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21., 22., 23., 24., 25.,
+            ];
+            let v2: Vec<f32> = vec![
+                40., 41., 42., 43., 44., 45., 46., 47., 48., 49., 50., 51., 52., 53., 54., 55.,
+            ];
+            let l2 = l2_similarity(&v1, &v2);
+            let l2_simd = unsafe { l2_similarity_avx(&v1, &v2) };
+            assert_eq!(l2, l2_simd);
+
+            let l1 = l1_similarity(&v1, &v2);
+            let l1_simd = unsafe { l1_similarity_avx(&v1, &v2) };
+            assert_eq!(l1, l1_simd);
+        }
+    }
 }

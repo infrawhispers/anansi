@@ -4,7 +4,11 @@ use crate::av_store;
 use crate::av_store::AlignedDataStore;
 use crate::errors;
 use crate::metric;
+use crate::nn_queue;
+use std::cmp;
+use std::ops::ControlFlow;
 
+// use sortedvec::sortedvec;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use roaring::RoaringTreemap;
@@ -82,7 +86,7 @@ where
         unimplemented!()
     }
     fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
-        unimplemented!()
+        self.search(q, k)
     }
     fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
         unimplemented!()
@@ -182,7 +186,7 @@ where
                     flag: false,
                     distance: 0.0
                 };
-                params_r.params_e.indexing_range + 1
+                params_r.params_e.indexing_queue_size + 1
             ];
             let mut inserted_into_pool_hs: HashSet<usize> = HashSet::new();
             let mut inserted_into_pool_rb: RoaringTreemap = RoaringTreemap::new();
@@ -234,6 +238,7 @@ where
                     .splice(..new_out_neighbors.len(), new_out_neighbors.iter().cloned());
             }
         });
+        println!("link time: {:?}", start.elapsed());
     }
 
     // this maintains our sorted invariant using a binary search
@@ -280,12 +285,11 @@ where
 
     fn iterate_to_fixed_point(
         &self,
-        vid: usize,
         params_r: &DiskANNParamsInternal,
         pool: &mut Vec<ann::INode>,
         visited: &mut HashSet<usize>,
         des: &mut Vec<usize>,
-        best_l_nodes: &mut Vec<ann::INode>,
+        best_l_nodes_s: &mut Vec<ann::INode>,
         inserted_into_pool_hs: &mut HashSet<usize>,
         inserted_into_pool_rb: &mut RoaringTreemap,
         // ----
@@ -298,7 +302,6 @@ where
         // pool -> expanded_nodes_info
         // visited -> expanded_nodes_ids
         let data = self.data.read();
-        // pull out the slice we are comparing against
         let arr_b: &[f32];
         match target {
             QueryTarget::VId(vid) => {
@@ -309,15 +312,13 @@ where
                 arr_b = v;
             }
         }
-        for i in 0..best_l_nodes.len() {
-            best_l_nodes[i].distance = std::f32::INFINITY;
-        }
+        let mut best_l_nodes =
+            nn_queue::NNPriorityQueue::new(params_r.params_e.indexing_queue_size);
         if !is_search {
             pool.clear();
             visited.clear();
             des.clear();
         }
-
         let mut l: usize = 0;
         let fast_iterate: bool =
             params_r.params_e.max_points + params_r.num_frozen_pts <= MAX_POINTS_FOR_USING_BITSET;
@@ -351,102 +352,93 @@ where
             if fast_iterate {
                 if !inserted_into_pool_rb.contains((*id).try_into().unwrap()) {
                     inserted_into_pool_rb.insert((*id).try_into().unwrap());
-                    best_l_nodes[l] = nn;
-                    l += 1
+                    best_l_nodes.insert(nn);
+                    // println!("inserting into best_l_nodes");
+                    // best_l_nodes[l] = nn;
+                    // l += 1
                 }
             } else {
                 if !inserted_into_pool_hs.contains(id) {
                     inserted_into_pool_hs.insert(*id);
-                    best_l_nodes[l] = nn;
-                    l += 1
+                    best_l_nodes.insert(nn);
+                    // println!("inserting into best_l_nodes");
+                    // best_l_nodes[l] = nn;
+                    // l += 1
                 }
-            }
-            if l == l_size {
-                break;
             }
         }
-        best_l_nodes.sort();
-        let mut k: usize = 0;
+
         let hops: usize = 0;
         let mut cmps: usize = 0;
-        while k < l {
-            let mut nk: usize = l;
-            if best_l_nodes[k].flag {
-                best_l_nodes[k].flag = false;
-                let n_vid: usize = best_l_nodes[k].vid;
-                if !(best_l_nodes[k].vid != params_r.start
-                    && params_r.num_frozen_pts > 0
-                    && !ret_frozen)
-                {
-                    if !is_search {
-                        pool.push(best_l_nodes[k]);
-                        visited.insert(n_vid);
-                    }
-                }
-                des.clear();
-                {
-                    let _final_graph = self.final_graph[n_vid].read();
-                    for m in 0.._final_graph.len() {
-                        debug_assert!(
-                            _final_graph[m]
-                                <= params_r.params_e.max_points + params_r.num_frozen_pts,
-                            "out of range edge: {edge} | found at vertex: {vertex}",
-                            edge = _final_graph[m],
-                            vertex = n_vid,
-                        );
-                        des.push(_final_graph[m]);
-                    }
-                }
-                for m in 0..des.len() {
-                    let id: usize = des[m];
-                    let id_is_missing = if fast_iterate {
-                        !inserted_into_pool_rb.contains(id.try_into().unwrap())
+        let mut nbrs_potential: Vec<ann::INode> =
+            Vec::with_capacity(params_r.params_e.indexing_queue_size + 1);
+
+        while best_l_nodes.has_unexpanded_node() {
+            let nbr = best_l_nodes.closest_unexpanded();
+            let nbr_vid = nbr.vid;
+            if !is_search
+                && (nbr_vid != params_r.start || params_r.num_frozen_pts == 0 || ret_frozen)
+            {
+                pool.push(nbr);
+                visited.insert(nbr_vid);
+            }
+
+            des.clear();
+            nbrs_potential.clear();
+            {
+                let _final_graph = self.final_graph[nbr_vid].read();
+                for m in 0.._final_graph.len() {
+                    debug_assert!(
+                        _final_graph[m] <= params_r.params_e.max_points + params_r.num_frozen_pts,
+                        "out of range edge: {edge} | found at vertex: {vertex}",
+                        edge = _final_graph[m],
+                        vertex = nbr_vid,
+                    );
+                    let id = _final_graph[m];
+                    let is_not_visited = if fast_iterate {
+                        !inserted_into_pool_rb.contains((id).try_into().unwrap())
                     } else {
                         !inserted_into_pool_hs.contains(&id)
                     };
-                    if id_is_missing {
-                        if fast_iterate {
-                            inserted_into_pool_rb.insert(id.try_into().unwrap());
-                        } else {
-                            inserted_into_pool_hs.insert(id);
-                        }
-
-                        if m + 1 < des.len() {
-                            let nextn: usize = des[m + 1];
-                            // TODO(infrawhispers) - implement a prefetch that is architecture
-                            // dependent, we probably want something like:
-                            // TMetric::prefetch(vec: &[f32])
-                        }
-                        cmps += 1;
-                        let arr_a: &[f32] = &data.data[id * params_r.aligned_dim
-                            ..(id * params_r.aligned_dim) + params_r.aligned_dim];
-                        let dist: f32 = TMetric::compare(arr_a, arr_b);
-                        if dist >= best_l_nodes[l - 1].distance && l == l_size {
-                            continue;
-                        }
-                        let nn_new: ann::INode = ann::INode {
-                            vid: id,
-                            distance: dist,
-                            flag: true,
-                        };
-                        let r: usize = self.insert_into_pool(best_l_nodes, l, nn_new);
-                        if l < l_size {
-                            l += 1;
-                        }
-                        if r < nk {
-                            nk = r;
-                        }
+                    if is_not_visited {
+                        des.push(_final_graph[m]);
                     }
                 }
-                if nk <= k {
-                    k = nk;
-                } else {
-                    k += 1;
-                }
-            } else {
-                k += 1;
             }
+            // mark things that we have already visited...
+            des.iter().for_each(|id| {
+                if fast_iterate {
+                    inserted_into_pool_rb.insert((*id).try_into().unwrap());
+                } else {
+                    inserted_into_pool_hs.insert(*id);
+                }
+            });
+            for m in 0..des.len() {
+                let id: usize = des[m];
+                // if m + 1 < des.len() {
+                // let nextn: usize = des[m + 1];
+                //  // TODO(infrawhispers) - implement a prefetch that is architecture
+                //  // dependent, we probably want something like:
+                //  // TMetric::prefetch(vec: &[f32])
+                // }
+                let arr_a: &[f32] = &data.data
+                    [id * params_r.aligned_dim..(id * params_r.aligned_dim) + params_r.aligned_dim];
+                nbrs_potential.push(ann::INode {
+                    vid: id,
+                    distance: TMetric::compare(arr_a, arr_b),
+                    flag: false,
+                });
+            }
+            // return (hops, cmps);
+            cmps += des.len();
+            nbrs_potential.iter().for_each(|nbr| {
+                best_l_nodes.insert(nbr.clone());
+            })
         }
+        best_l_nodes_s[..params_r.params_e.indexing_queue_size]
+            .copy_from_slice(&best_l_nodes.data[..params_r.params_e.indexing_queue_size]);
+        // best_l_nodes_s.copy_from_slice(&best_l_nodes[..]);
+        // println!("{:?}", best_l_nodes_s);
         (hops, cmps)
     }
 
@@ -468,7 +460,6 @@ where
             init_ids.push(params_r.start);
         }
         let _ = self.iterate_to_fixed_point(
-            vid,
             params_r,
             pool,
             visited,
@@ -577,21 +568,23 @@ where
             data,
         );
         pruned_list.clear();
+        assert!(result.len() <= params_r.params_e.indexing_range);
         for nn in result.into_iter() {
             if nn.vid != vid {
                 pruned_list.push(nn.vid);
             }
         }
+
         if params_r.saturate_graph && alpha > 1.0 {
             let mut i: usize = 0;
             while i < pool.len() && pruned_list.len() < range {
                 // this should be a binary search over the items!
-                let node = pool.iter().find(|&&x| x.vid == pool[i].vid);
+                let node = pruned_list.iter().find(|&&i| i == pool[i].vid);
                 match node {
-                    Some(_x) => {
+                    Some(_x) => (),
+                    None => {
                         pruned_list.push(pool[i].vid);
                     }
-                    None => (),
                 }
                 i += 1;
             }
@@ -720,6 +713,7 @@ where
         inserted_into_pool_rb: &mut RoaringTreemap,
     ) {
         let mut init_ids: Vec<usize> = Vec::new();
+        init_ids.push(params_r.start);
         self.get_expanded_nodes(
             vid,
             params_r,
@@ -750,7 +744,10 @@ where
             }
         }
         let data = self.data.read();
+        // println!("pool len: {:?}", pool.len());
         let mut pruned_list: Vec<usize> = Vec::new();
+        // assert!(!pruned_list.is_empty(), );
+
         self.prune_neighbors(vid, pool, &mut pruned_list, params_r, &data);
         {
             // necessary to support the eager delete operation
@@ -787,6 +784,81 @@ where
         }
     }
 
+    fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
+        let mut init_ids: Vec<usize> = Vec::new();
+        let mut q_aligned;
+        // {
+        let params_r = self.params.read();
+        if init_ids.len() == 0 {
+            init_ids.push(params_r.start);
+        }
+        q_aligned = AlignedDataStore::new(params_r.aligned_dim, 1);
+        // }
+        q_aligned.data[0..q.len()].clone_from_slice(q);
+        let mut pool: Vec<ann::INode> =
+            Vec::with_capacity(params_r.params_e.indexing_queue_size * 2);
+        let mut visited: HashSet<usize> =
+            HashSet::with_capacity(params_r.params_e.indexing_queue_size * 2);
+        let mut des: Vec<usize> = Vec::with_capacity(
+            ((params_r.params_e.indexing_range as f64) * GRAPH_SLACK_FACTOR) as usize,
+        );
+        let mut best_l_nodes: Vec<ann::INode> = vec![
+            ann::INode {
+                vid: 0,
+                flag: false,
+                distance: 0.0
+            };
+            params_r.params_e.indexing_queue_size + 1
+        ];
+        let mut inserted_into_pool_hs: HashSet<usize> = HashSet::new();
+        let mut inserted_into_pool_rb: RoaringTreemap = RoaringTreemap::new();
+        /*
+            &self,
+            params_r: &DiskANNParamsInternal,
+            pool: &mut Vec<ann::INode>,
+            visited: &mut HashSet<usize>,
+            des: &mut Vec<usize>,
+            best_l_nodes_s: &mut Vec<ann::INode>,
+            inserted_into_pool_hs: &mut HashSet<usize>,
+            inserted_into_pool_rb: &mut RoaringTreemap,
+            // ----
+            init_ids: &mut Vec<usize>,
+            ret_frozen: bool,
+            is_search: bool,
+            l_size: usize,
+            target: QueryTarget,
+        */
+        let (hops, cmps): (usize, usize) = self.iterate_to_fixed_point(
+            &params_r,
+            &mut pool,
+            &mut visited,
+            &mut des,
+            &mut best_l_nodes,
+            &mut inserted_into_pool_hs,
+            &mut inserted_into_pool_rb,
+            &mut init_ids,
+            true,
+            true,
+            140,
+            QueryTarget::Vector(&q_aligned.data[..]),
+        );
+        let mut filtered: Vec<ann::Node> = Vec::with_capacity(k + 1);
+        best_l_nodes.iter().try_for_each(|nn| {
+            if filtered.len() > k {
+                return ControlFlow::Break(nn);
+            }
+            if nn.vid != params_r.start && nn.distance != f32::MAX {
+                filtered.push(ann::Node {
+                    vid: nn.vid,
+                    distance: nn.distance,
+                    eid: [0u8; 16],
+                });
+            }
+            ControlFlow::Continue(())
+        });
+        Ok(filtered)
+    }
+
     fn build(&self) {
         {
             let mut paramsw = self.params.write();
@@ -801,6 +873,30 @@ where
         self.generate_frozen_point();
         self.link();
         self.update_in_graph();
+        let mut max: usize = 0;
+        let mut min: usize = usize::MAX;
+        let mut total: usize = 0;
+        let mut cnt: usize = 0;
+        for idx in 0..self.params.read().nd {
+            let fg_nbrs = self.final_graph[idx].read();
+            max = cmp::max(max, fg_nbrs.len());
+            min = cmp::min(min, fg_nbrs.len());
+            total += fg_nbrs.len();
+            if fg_nbrs.len() < 2 {
+                cnt += 1;
+            }
+        }
+        println!(
+            "Index Build Stats\nmax: {} | avg: {} | nmin: {} | count(deg<2): {}",
+            max,
+            total / (self.params.read().nd + 1),
+            min,
+            cnt,
+        );
+        // for idx in 0..100 {
+        //     let fg_nbrs = self.final_graph[idx].read();
+        //     println!("{} -> {:?}", idx, fg_nbrs);
+        // }
     }
 
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {

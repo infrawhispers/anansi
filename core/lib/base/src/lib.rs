@@ -7,7 +7,7 @@ pub mod diskannv1;
 mod errors;
 pub mod flat;
 pub mod metric;
-
+mod nn_queue;
 // mod diskannv1_test;
 
 #[cfg(target_arch = "wasm32")]

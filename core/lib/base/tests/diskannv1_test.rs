@@ -1,6 +1,7 @@
 use byteorder::{BigEndian, ByteOrder};
 use byteorder::{LittleEndian, ReadBytesExt};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
@@ -62,24 +63,35 @@ impl SIFT<'_> {
     fn fetch_ground_truth_by_id(
         &self,
         filename: &str,
+        k: usize,
         num_closest: usize,
-    ) -> anyhow::Result<HashMap<base::ann::EId, Vec<base::ann::EId>>> {
+    ) -> anyhow::Result<HashMap<base::ann::EId, HashSet<base::ann::EId>>> {
         let truth_vecs = self.fetch_ground_truth(filename, num_closest)?;
-        let mut truth_by_id: HashMap<base::ann::EId, Vec<base::ann::EId>> = HashMap::new();
+        let mut truth_by_id: HashMap<base::ann::EId, HashSet<base::ann::EId>> = HashMap::new();
         for id in 0..truth_vecs.len() / num_closest {
             let truth_vec = truth_vecs
                 [(id * num_closest) as usize..(id * num_closest + num_closest) as usize]
                 .to_vec();
-            let mut eids: Vec<base::ann::EId> = vec![[0u8; 16]; truth_vec.len()];
-            truth_vec.into_iter().enumerate().for_each(|(i, x)| {
+            let mut eids: HashSet<base::ann::EId> = HashSet::with_capacity(k);
+            // vec![[0u8; 16]; truth_vec.len()];
+            // if id == 10 {
+            //     println!("{:?}", truth_vec);
+            // }
+            for i in 0..truth_vec.len() {
+                if i == k {
+                    break;
+                }
                 let mut eid: base::ann::EId = [0u8; 16];
                 BigEndian::write_uint(
                     &mut eid,
-                    x.try_into().unwrap(),
+                    truth_vec[i].try_into().unwrap(),
                     std::mem::size_of::<usize>(),
                 );
-                eids[i] = eid;
-            });
+                eids.insert(eid);
+            }
+            // truth_vec.into_iter().enumerate().for_each(|(i, x)| {
+            //     eids[i] = eid;
+            // });
             let mut ref_eid: base::ann::EId = [0u8; 16];
             BigEndian::write_uint(
                 &mut ref_eid,
@@ -97,17 +109,16 @@ mod test {
     use super::*;
     #[test]
     fn sift_small_exact() {
-        let directory = Path::new("../../data/siftsmall/");
+        let directory = Path::new("../../../../eval/data/siftsmall/");
         let dims: usize = 128;
         let loader = SIFT {
             directory: directory,
             dims: dims,
         };
-
-        let k: usize = 100;
+        let k: usize = 10;
 
         let base_vectors = loader
-            .fetch_vectors("siftsmall_base.fvecs", 128)
+            .fetch_vectors("sift_base.fvecs", 128)
             .expect("unable to fetch the base vectors");
         let mut eids: Vec<base::ann::EId> = vec![[0u8; 16]; base_vectors.len() / 128];
         for i in 0..base_vectors.len() / 128 {
@@ -120,12 +131,12 @@ mod test {
             eids[i] = eid;
         }
 
-        let _query_vectors = loader
-            .fetch_vectors("siftsmall_query.fvecs", 128)
+        let query_vectors = loader
+            .fetch_vectors("sift_query.fvecs", 128)
             .expect("unable to fetch the query vectors");
 
         let _truth_vectors = loader
-            .fetch_ground_truth_by_id("siftsmall_groundtruth.ivecs", k)
+            .fetch_ground_truth_by_id("sift_groundtruth.ivecs", k, 100)
             .expect("fetching the items");
         let _num_truth_vectors = _truth_vectors.len();
         let params = ann::ANNParams::DiskANN {
@@ -133,10 +144,10 @@ mod test {
                 dim: 128,
                 max_points: eids.len(),
                 indexing_threads: 1,
-                indexing_range: 64,
-                indexing_queue_size: 100,
-                indexing_maxc: 140,
-                indexing_alpha: 1.2,
+                indexing_range: 64,       // R
+                indexing_queue_size: 100, // L
+                indexing_maxc: 140,       // C
+                indexing_alpha: 1.2,      // alpha
             },
         };
         let ann_idx: diskannv1::DiskANNV1Index<metric::MetricL2> =
@@ -145,6 +156,40 @@ mod test {
             ann_idx.batch_insert(&eids, &base_vectors).is_ok(),
             "unexpexted err on batch_insert to the vector store"
         );
-        // ann
+        for i in 1.._num_truth_vectors {
+            let query_vec = query_vectors[(i * dims) as usize..(i * dims + dims) as usize].to_vec();
+            let mut query_eid: ann::EId = [0u8; 16];
+            BigEndian::write_uint(
+                &mut query_eid,
+                i.try_into().unwrap(),
+                std::mem::size_of::<usize>(),
+            );
+
+            let nns = ann_idx
+                .search(&query_vec, k)
+                .expect("unexpected error fetching the closest vectors");
+            let mut nodes_found: HashSet<ann::EId> = HashSet::new();
+
+            // if i == 10 {
+            //     println!("{:?}", nns);
+            // }
+
+            for nn in nns.iter() {
+                let mut eid: base::ann::EId = [0u8; 16];
+                BigEndian::write_uint(
+                    &mut eid,
+                    nn.vid.try_into().unwrap(),
+                    std::mem::size_of::<usize>(),
+                );
+                nodes_found.insert(eid);
+            }
+            let nodes_gnd_truth = _truth_vectors.get(&(query_eid)).unwrap();
+            println!(
+                "vec_id: {} percentage: {:?}",
+                i,
+                (nodes_gnd_truth.intersection(&nodes_found).count() as f32) / (k as f32) * 100.0,
+                // nodes_found
+            );
+        }
     }
 }
