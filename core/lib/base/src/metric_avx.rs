@@ -63,7 +63,6 @@ pub(crate) unsafe fn l1_similarity_avx(arr_a: &[f32], arr_b: &[f32]) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     #[test]
     fn test_euclid() {
         #[cfg(all(target_arch = "avx", target_feature = "fma",))]

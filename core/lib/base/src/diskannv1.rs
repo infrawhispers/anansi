@@ -85,7 +85,7 @@ where
         self.batch_insert(eids, data)
     }
     fn insert(&self, eid: EId, data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-        unimplemented!()
+        self.insert(eid, data)
     }
     fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
         self.search(q, k)
@@ -339,7 +339,7 @@ where
             });
             debug_assert!(dist_scratch.len() == 0);
             let mut nbrs_potential: Vec<ann::INode> = Vec::with_capacity(id_scratch.len());
-            id_scratch.iter().enumerate().for_each(|(i, nn)| {
+            id_scratch.iter().for_each(|nn| {
                 // if i + 1 < id_scratch.len() {
                 // // TODO(infrawhispers) there is some pre-fetch funny biz that happens in the original implementation
                 // }
@@ -636,6 +636,10 @@ where
         );
     }
 
+    fn reserve_location(&self) -> usize {}
+    fn insert(&self, eid: EId, data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         {
             // verify that we have the correct arguments
@@ -719,7 +723,7 @@ where
         }
         let num_scratch_spaces = 12;
         let (s, r) = bounded(num_scratch_spaces);
-        for i in 0..num_scratch_spaces {
+        for _ in 0..num_scratch_spaces {
             let scratch = nn_query_scratch::InMemoryQueryScratch::new(&paramsi.read());
             s.send(scratch).unwrap();
         }
