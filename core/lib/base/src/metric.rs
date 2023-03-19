@@ -61,7 +61,6 @@ impl Metric<u8> for MetricL2 {
         None
     }
     fn compare(arr_a: &[u8], arr_b: &[u8]) -> f32 {
-        // let arr_a_u32 :=
         let res: u32 = arr_a
             .iter()
             .copied()
