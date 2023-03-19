@@ -53,11 +53,11 @@ impl InMemoryQueryScratch {
         self.id_scratch.clear();
         self.dist_scratch.clear();
     }
-    pub fn resize_for_new_l(&mut self, l_new: usize) {
-        if l_new > self.curr_l {
-            self.curr_l = l_new;
-            self.pool.reserve(3 * self.curr_l + self.curr_r);
-            self.inserted_into_pool_hs.reserve(20 * self.curr_l);
-        }
-    }
+    // pub fn resize_for_new_l(&mut self, l_new: usize) {
+    //     if l_new > self.curr_l {
+    //         self.curr_l = l_new;
+    //         self.pool.reserve(3 * self.curr_l + self.curr_r);
+    //         self.inserted_into_pool_hs.reserve(20 * self.curr_l);
+    //     }
+    // }
 }

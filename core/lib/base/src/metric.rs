@@ -23,7 +23,7 @@ pub(crate) fn l2_similarity(arr_a: &[f32], arr_b: &[f32]) -> f32 {
         .iter()
         .copied()
         .zip(arr_b.iter().copied())
-        .map(|(a, b)| (a - b).powi(2))
+        .map(|(a, b)| (a - b) * (a - b))
         .sum();
 }
 // use std::marker::PhantomData;
@@ -57,11 +57,18 @@ impl Metric<f32> for MetricL2 {
     }
 }
 impl Metric<u8> for MetricL2 {
-    fn pre_process(arr_a: &[u8]) -> Option<Vec<u8>> {
+    fn pre_process(_arr_a: &[u8]) -> Option<Vec<u8>> {
         None
     }
     fn compare(arr_a: &[u8], arr_b: &[u8]) -> f32 {
-        0.0
+        // let arr_a_u32 :=
+        let res: u32 = arr_a
+            .iter()
+            .copied()
+            .zip(arr_b.iter().copied())
+            .map(|(a, b)| (a as u32 - b as u32) * (a as u32 - b as u32))
+            .sum();
+        res as f32
     }
 }
 

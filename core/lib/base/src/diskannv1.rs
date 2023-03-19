@@ -682,7 +682,7 @@ where
     fn build(&self) {
         let mut visit_order: Vec<usize>;
         {
-            let mut params_r = self.params.read();
+            let params_r = self.params.read();
             // if params_w.num_frozen_pts > 0 {
             //     params_w.start = params_w.params_e.max_points;
             // } else {
@@ -928,7 +928,7 @@ where
     fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         // we assume everything is good!
         {
-            let mut params_r = self.params.read();
+            let params_r = self.params.read();
             let expected_len = eids.len() * params_r.aligned_dim;
             if data.len() != expected_len {
                 return Err(Box::new(errors::ANNError::GenericError {
