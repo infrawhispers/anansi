@@ -67,8 +67,27 @@ where
         Ok(())
     }
 
-    fn insert(&self, eid: EId, data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-        self.insert(eid, data)
+    fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+        if (data.len() % eids.len()) != 0 {
+            return Err(Box::new(errors::ANNError::GenericError {
+                message: format!(
+                    "data is not an exact multiple of eids - data_len: {} | eids_len: {}",
+                    eids.len(),
+                    data.len(),
+                )
+                .into(),
+            }));
+        }
+        let data_len = data.len() / eids.len();
+        for (idx, eid) in eids.iter().enumerate() {
+            match self.insert(*eid, &data[idx * data_len..idx * data_len + data_len]) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(err);
+                }
+            }
+        }
+        Ok(())
     }
 
     fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {

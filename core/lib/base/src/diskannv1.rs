@@ -9,6 +9,8 @@ use crate::nn_queue;
 
 use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::RwLock;
+use rand::distributions::{Distribution, Standard};
+use rand::thread_rng;
 use rayon::prelude::*;
 use roaring::RoaringTreemap;
 use std::cmp;
@@ -16,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::ops::ControlFlow;
 use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -84,8 +87,8 @@ where
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         self.batch_insert(eids, data)
     }
-    fn insert(&self, eid: EId, data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-        self.insert(eid, data)
+    fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+        self.insert(eids, data)
     }
     fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
         self.search(q, k)
@@ -99,6 +102,34 @@ impl<TMetric> DiskANNV1Index<TMetric>
 where
     TMetric: metric::Metric<f32>,
 {
+    fn set_start_point_at_random(&self, radius: f32) {
+        let params_r = self.params.read();
+        let mut rng = thread_rng();
+        let v: Vec<f64> = Standard
+            .sample_iter(&mut rng)
+            .take(params_r.aligned_dim)
+            .collect();
+
+        let mut norm_sq: f64 = 0.0f64;
+        let real_vec: Vec<f64> = v
+            .iter()
+            .map(|r| {
+                norm_sq += r * r;
+                *r
+            })
+            .collect();
+        let norm: f64 = f64::sqrt(norm_sq);
+        let start_vec: Vec<f32> = real_vec
+            .iter()
+            .map(|p| (*p * (radius as f64) / norm) as f32)
+            .collect();
+
+        // copy the data into our vector!
+        let mut data_w = self.data.write();
+        let idx_s: usize = params_r.start * params_r.aligned_dim;
+        let idx_e: usize = idx_s + params_r.aligned_dim;
+        data_w.data[idx_s..idx_e].copy_from_slice(&start_vec[..]);
+    }
     fn calculate_entry_point(
         &self,
         paramsr: &DiskANNParamsInternal,
@@ -148,16 +179,8 @@ where
         let idx_t: usize = params_r.params_e.max_points * params_r.aligned_dim;
         ann::copy_within_a_slice(&mut data_w.data, idx_f, idx_t, params_r.aligned_dim);
     }
-    fn link(&self) {
+    fn link(&self, visit_order: Vec<usize>, do_prune: bool) {
         let params_r = self.params.read();
-        let mut visit_order: Vec<usize> = Vec::with_capacity(params_r.nd + params_r.num_frozen_pts);
-        for vid in 0..params_r.nd {
-            visit_order.push(vid);
-        }
-        if params_r.num_frozen_pts > 0 {
-            visit_order.push(params_r.params_e.max_points);
-        }
-        let start = Instant::now();
         visit_order.par_iter().for_each(|vid| {
             let mut pruned_list: Vec<usize> = Vec::new();
             // let mut scratch: nn_query_scratch::InMemoryQueryScratch =
@@ -182,6 +205,9 @@ where
             );
             self.s_scratch.send(scratch).unwrap();
         });
+        if !do_prune {
+            return;
+        }
         let data = &self.data.read();
         visit_order.par_iter().for_each(|curr_vid| {
             let should_prune: bool;
@@ -233,7 +259,6 @@ where
                 self.s_scratch.send(scratch).unwrap();
             }
         });
-        println!("link time: {:?}", start.elapsed());
     }
 
     fn iterate_to_fixed_point(
@@ -604,16 +629,24 @@ where
     }
 
     fn build(&self) {
+        let mut visit_order: Vec<usize>;
         {
-            let mut paramsw = self.params.write();
-            if paramsw.num_frozen_pts > 0 {
-                paramsw.start = paramsw.params_e.max_points;
-            } else {
-                paramsw.start = self.calculate_entry_point(&paramsw, &self.data.read());
+            let mut params_r = self.params.read();
+            // if params_w.num_frozen_pts > 0 {
+            //     params_w.start = params_w.params_e.max_points;
+            // } else {
+            //     params_w.start = self.calculate_entry_point(&params_w, &self.data.read());
+            // }
+            visit_order = Vec::with_capacity(params_r.nd + params_r.num_frozen_pts);
+            for vid in 0..params_r.nd {
+                visit_order.push(vid);
             }
+            visit_order.push(params_r.params_e.max_points);
         }
         self.generate_frozen_point();
-        self.link();
+        let start = Instant::now();
+        self.link(visit_order, true);
+        println!("link time: {:?}", start.elapsed());
         let mut max: usize = 0;
         let mut min: usize = usize::MAX;
         let mut total: usize = 0;
@@ -636,8 +669,101 @@ where
         );
     }
 
-    fn reserve_location(&self) -> usize {}
-    fn insert(&self, eid: EId, data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+    fn reserve_locations(&self, count: usize) -> Result<Vec<usize>, Box<dyn std::error::Error>> {
+        let mut vids: Vec<usize> = Vec::with_capacity(count);
+        let mut empty_slots_w = self.empty_slots.write();
+        if !empty_slots_w.is_empty() {
+            empty_slots_w.iter().try_for_each(|vid| {
+                if vids.len() > count {
+                    return ControlFlow::Break(vid);
+                }
+                vids.push(*vid);
+                return ControlFlow::Continue(());
+            });
+            // don't forget to actually remove them!
+            vids.iter().for_each(|vid| {
+                empty_slots_w.remove(vid);
+            });
+        }
+        // fully satisified by the empty_slots
+        if vids.len() == count {
+            return Ok(vids);
+        }
+        let cnt_needed: usize = count - vids.len();
+        let params_r = self.params.read();
+        if cnt_needed + self.id_increment.load(std::sync::atomic::Ordering::SeqCst)
+            > params_r.params_e.max_points
+        {
+            // push back our vids that we previously had before we roll everything back
+            vids.iter().for_each(|vid| {
+                empty_slots_w.insert(*vid);
+            });
+            return Err(Box::new(errors::ANNError::GenericError{
+                message: format!(
+                    "reservation ({}) would lead to > max_points ({}) in index, resizing not supported as yet",
+                    count,
+                    params_r.params_e.max_points,
+                ),
+            }));
+        }
+        let vid_s = self
+            .id_increment
+            .fetch_add(cnt_needed, std::sync::atomic::Ordering::SeqCst);
+
+        (vid_s..vid_s + cnt_needed).for_each(|vid| {
+            vids.push(vid);
+        });
+        Ok(vids)
+    }
+
+    fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+        // we assume everything is good!
+        {
+            let mut params_r = self.params.read();
+            let expected_len = eids.len() * params_r.aligned_dim;
+            if data.len() != expected_len {
+                return Err(Box::new(errors::ANNError::GenericError {
+                    message: format!(
+                        "points.len: {} !=  aligned_dim * eids.len: {}",
+                        data.len(),
+                        expected_len,
+                    )
+                    .into(),
+                }));
+            }
+        }
+        let vids = self.reserve_locations(eids.len())?;
+        debug_assert!(
+            vids.len() == eids.len(),
+            "could not get enough vids to map to the eid database",
+        );
+        {
+            // hold the lock and plop the data into our datastore - switching
+            // to segments should allow us to not block _all_ readers during
+            // this operation
+            let mut data_w = self.data.write();
+            let params_r = self.params.read();
+            for idx in 0..vids.len() {
+                // params copying into our aligned data source
+                let idx_s_to = vids[idx] * params_r.aligned_dim;
+                let idx_e_to = idx_s_to + params_r.aligned_dim;
+                // params copying from our supplied slice
+                let idx_s_fr = idx * params_r.aligned_dim;
+                let idx_e_fr = idx_s_fr + params_r.aligned_dim;
+                data_w.data[idx_s_to..idx_e_to].copy_from_slice(&data[idx_s_fr..idx_e_fr]);
+            }
+        }
+        {
+            // insert items into the tag_to_location + location_to_tag
+            let mut tl = self.tag_to_location.write();
+            let mut lt = self.location_to_tag.write();
+            for idx in 0..eids.len() {
+                tl.insert(eids[idx], vids[idx]);
+                lt.insert(vids[idx], eids[idx]);
+            }
+        }
+        // finally run the insertion process
+        self.link(vids, false);
         Ok(())
     }
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
@@ -742,6 +868,8 @@ where
             s_scratch: s,
             r_scratch: r,
         };
+        // any additional setup that we need to do _on the instance_
+        obj.set_start_point_at_random(5.0);
         Ok(obj)
     }
 }
