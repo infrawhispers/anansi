@@ -53,7 +53,8 @@ pub struct DiskANNV1Index<TMetric: metric::Metric<f32>> {
     metric: PhantomData<TMetric>,
 
     data: Arc<RwLock<av_store::AlignedDataStore>>,
-    final_graph: Arc<Vec<RwLock<Vec<usize>>>>,
+    in_graph: Arc<Vec<RwLock<HashSet<usize>>>>, // all vids going *into* the node: vid -> {vid_1, vid_2, ..}
+    final_graph: Arc<Vec<RwLock<Vec<usize>>>>, // all vids that are closest: vid -> [vid_1, vid_2...]
     location_to_tag: Arc<RwLock<HashMap<usize, EId>>>,
     tag_to_location: Arc<RwLock<HashMap<EId, usize>>>,
 
@@ -508,12 +509,13 @@ where
             let mut prune_needed: bool = false;
             {
                 let mut node_neighbors_f = self.final_graph[*des].write();
+                copy_of_neighhbors = node_neighbors_f.clone();
                 if !node_neighbors_f.iter().any(|&i| i == vid) {
                     if node_neighbors_f.len() < ((GRAPH_SLACK_FACTOR * (range as f64)) as usize) {
                         node_neighbors_f.push(vid);
+                        copy_of_neighhbors.push(vid);
                         prune_needed = false;
                     } else {
-                        copy_of_neighhbors = node_neighbors_f.clone();
                         copy_of_neighhbors.push(vid);
                         prune_needed = true;
                     }
@@ -869,7 +871,13 @@ where
             std::iter::repeat_with(|| (RwLock::new(Vec::with_capacity(reserve_size))))
                 .take(total_internal_points)
                 .collect();
+        let shared_in: Vec<_> =
+            std::iter::repeat_with(|| (RwLock::new(HashSet::with_capacity(reserve_size))))
+                .take(total_internal_points)
+                .collect();
+
         let final_graph = Arc::new(shared);
+        let in_graph = Arc::new(shared_in);
         let empty_slots: Arc<RwLock<HashSet<usize>>> = Arc::new(RwLock::new(HashSet::new()));
         let delete_set: Arc<RwLock<HashSet<usize>>> = Arc::new(RwLock::new(HashSet::new()));
 
@@ -902,6 +910,7 @@ where
         let obj: DiskANNV1Index<TMetric> = DiskANNV1Index::<TMetric> {
             params: paramsi,
             data,
+            in_graph,
             final_graph,
             location_to_tag,
             tag_to_location,

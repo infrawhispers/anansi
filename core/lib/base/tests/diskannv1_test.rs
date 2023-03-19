@@ -160,7 +160,7 @@ mod test {
         let ann_idx: diskannv1::DiskANNV1Index<metric::MetricL2> =
             ann::ANNIndex::new(&params).expect("error creating diskannv1 index");
         assert!(
-            ann_idx.insert(&eids, &base_vectors).is_ok(),
+            ann_idx.batch_insert(&eids, &base_vectors).is_ok(),
             "unexpexted err on batch_insert to the vector store"
         );
         let mut total_intersection_count: usize = 0;
