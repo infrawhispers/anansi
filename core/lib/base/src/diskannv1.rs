@@ -216,7 +216,7 @@ where
             let should_prune: bool;
             let graph_copy: Vec<usize>;
             {
-                let nbrs = self.final_graph[*curr_vid].write();
+                let nbrs = self.final_graph[*curr_vid].read();
                 should_prune = nbrs.len() > params_r.params_e.indexing_range;
                 graph_copy = nbrs.clone();
             }
