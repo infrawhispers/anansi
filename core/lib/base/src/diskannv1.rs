@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::ops::ControlFlow;
 use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering::SeqCst;
+// use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -91,7 +91,7 @@ where
         self.insert(eids, data)
     }
     fn delete(&self, eids: &[EId]) -> Result<(), Box<dyn std::error::Error>> {
-        unimplemented!()
+        self.delete(eids)
     }
     fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
         self.search(q, k)
@@ -717,6 +717,44 @@ where
             vids.push(vid);
         });
         Ok(vids)
+    }
+
+    // this is a *lazy* delete, the items just gets marked as removed!
+    fn delete(&self, eids: &[EId]) -> Result<(), Box<dyn std::error::Error>> {
+        let mut delete_set = self.delete_set.write();
+        let mut tag_to_location = self.tag_to_location.write();
+        let mut location_to_tag = self.location_to_tag.write();
+        eids.iter().for_each(|eid| match tag_to_location.get(eid) {
+            Some(vid) => {
+                delete_set.insert(*vid);
+                location_to_tag.remove(&vid);
+                tag_to_location.remove(eid);
+            }
+            None => {}
+        });
+        Ok(())
+    }
+
+    fn consolidate_deletes(&self) {
+        let old_delete_set: HashSet<usize>;
+        {
+            old_delete_set = self.delete_set.read().clone();
+        }
+        // let params_r = self.params_r.read(); <-- take the pool size from here!
+        let start = Instant::now();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+        pool.install(|| {
+            old_delete_set.par_iter().for_each(|vid| {
+                // TODO(infrawhispers) - this is a *full* consolidation as we don't keep a reverse
+                // lookup map
+                // println!("vid to delete: {:?}", vid);
+                
+            });
+        });
+        println!("consolidate_delete time: {:?}", start.elapsed());
     }
 
     fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
