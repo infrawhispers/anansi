@@ -740,19 +740,22 @@ where
         {
             old_delete_set = self.delete_set.read().clone();
         }
+        let vid_max = self.id_increment.load(std::sync::atomic::Ordering::SeqCst);
         // let params_r = self.params_r.read(); <-- take the pool size from here!
         let start = Instant::now();
+
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(1)
             .build()
             .unwrap();
+
         pool.install(|| {
-            old_delete_set.par_iter().for_each(|vid| {
-                // TODO(infrawhispers) - this is a *full* consolidation as we don't keep a reverse
-                // lookup map
-                // println!("vid to delete: {:?}", vid);
-                
-            });
+            // 0..
+            // old_delete_set.par_iter().for_each(|vid| {
+            // TODO(infrawhispers) - this is a *full* consolidation as we don't keep a reverse
+            // lookup map
+            // println!("vid to delete: {:?}", vid);
+            // });
         });
         println!("consolidate_delete time: {:?}", start.elapsed());
     }
