@@ -89,6 +89,9 @@ where
         }
         Ok(())
     }
+    fn delete(&self, eids: &[EId]) -> Result<(), Box<dyn std::error::Error>> {
+        self.delete(eids)
+    }
 
     fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
         self.search(q, k)
@@ -196,22 +199,32 @@ where
 
         Ok(())
     }
-    pub fn delete(&self, eid: ann::EId) -> Result<bool, Box<dyn std::error::Error>> {
-        let vid: usize;
-        {
-            match self.eid_to_vid.read().get(&eid) {
-                Some(vid_val) => vid = *vid_val,
-                None => {
-                    return Ok(false);
+    pub fn delete(&self, eids: &[ann::EId]) -> Result<(), Box<dyn std::error::Error>> {
+        eids.iter().for_each(|eid| {
+            let vid: usize;
+            let mut vid_found: bool = false;
+            {
+                match self.eid_to_vid.read().get(eid) {
+                    Some(vid_val) => {
+                        vid = *vid_val;
+                        vid_found = true;
+                    }
+                    None => {
+                        vid = 0;
+                        vid_found = false;
+                    }
                 }
             }
-        }
-        println!("removing the eid");
-        // key is in our mapping so do the delete set dance
-        self.eid_to_vid.write().remove(&eid);
-        self.vid_to_eid.write().remove(&vid);
-        self.delete_set.write().insert(vid);
-        Ok(true)
+            if vid_found {
+                self.eid_to_vid.write().remove(eid);
+                self.vid_to_eid.write().remove(&vid);
+                self.delete_set.write().insert(vid);
+            }
+            // println!("removing the eid");
+            // key is in our mapping so do the delete set dance
+        });
+
+        Ok(())
     }
     pub fn search(
         &self,
@@ -354,12 +367,16 @@ mod tests {
             }
         }
         // now delete the one we care about
-        match index.delete([0u8; 16]) {
-            Ok(_) => {}
-            Err(_) => {
-                panic!("no err should throw on deletion of existing item");
-            }
-        }
+        let delete_set = vec![[0u8; 16]; 1];
+        index
+            .delete(&delete_set)
+            .expect("unable to remove the item from the database");
+        // index.delete([0u8; 16]) {
+        //     Ok(_) => {}
+        //     Err(_) => {
+        //         panic!("no err should throw on deletion of existing item");
+        //     }
+        // }
         // then issue the search and ensure the old mapping does
         // not come up
         match index.search(&point_search, 1) {

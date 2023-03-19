@@ -90,6 +90,9 @@ where
     fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         self.insert(eids, data)
     }
+    fn delete(&self, eids: &[EId]) -> Result<(), Box<dyn std::error::Error>> {
+        unimplemented!()
+    }
     fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
         self.search(q, k)
     }
@@ -176,7 +179,7 @@ where
         let mut data_w = self.data.write();
         // {idx_f, idx_t} are indices into an array
         let idx_f: usize = self.calculate_entry_point(&params_r, &data_w) * params_r.aligned_dim;
-        let idx_t: usize = params_r.params_e.max_points * params_r.aligned_dim;
+        let idx_t: usize = params_r.start * params_r.aligned_dim;
         ann::copy_within_a_slice(&mut data_w.data, idx_f, idx_t, params_r.aligned_dim);
     }
     fn link(&self, visit_order: Vec<usize>, do_prune: bool) {
