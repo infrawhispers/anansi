@@ -193,13 +193,26 @@ where
                 self.r_scratch.recv().unwrap();
             scratch.clear();
             self.search_for_point_and_prune(*vid, &mut pruned_list, &params_r, &mut scratch);
-            {
-                let mut segment = self.final_graph[*vid].write();
-                segment.clear();
-                for i in 0..pruned_list.len() {
-                    segment.push(pruned_list[i]);
-                }
-            }
+            self.update_graph_nbrs(*vid, pruned_list.clone(), true);
+            // let old_segment: Vec<usize>;
+            // {
+            //     let mut segment = self.final_graph[*vid].write();
+            //     old_segment = segment.clone();
+            //     segment.clear();
+            //     for i in 0..pruned_list.len() {
+            //         segment.push(pruned_list[i]);
+            //     }
+            // }
+            // {
+            //     // populate_in_graph - the regexp to find instances this must
+            //     // be tied to is: "final_graph\[.*\].*write\(\)"
+            //     old_segment.iter().for_each(|nbr_vid| {
+            //         self.in_graph[*nbr_vid].write().remove(vid);
+            //     });
+            //     pruned_list.iter().for_each(|nbr_vid| {
+            //         self.in_graph[*nbr_vid].write().insert(*vid);
+            //     });
+            // }
             self.inter_insert(
                 *vid,
                 &mut pruned_list,
@@ -253,13 +266,26 @@ where
                     &mut scratch,
                     data,
                 );
-                {
-                    let mut segment = self.final_graph[*curr_vid].write();
-                    segment.clear();
-                    for i in 0..new_out_neighbors.len() {
-                        segment.push(new_out_neighbors[i]);
-                    }
-                }
+                self.update_graph_nbrs(*curr_vid, new_out_neighbors, true);
+                // let old_segment: Vec<usize>;
+                // {
+                //     let mut segment = self.final_graph[*curr_vid].write();
+                //     old_segment = segment.clone();
+                //     segment.clear();
+                //     for i in 0..new_out_neighbors.len() {
+                //         segment.push(new_out_neighbors[i]);
+                //     }
+                // }
+                // {
+                //     // populate_in_graph - the regexp to find instances this must
+                //     // be tied to is: "final_graph\[.*\].*write\(\)"
+                //     old_segment.iter().for_each(|nbr_vid| {
+                //         self.in_graph[*nbr_vid].write().remove(curr_vid);
+                //     });
+                //     new_out_neighbors.iter().for_each(|nbr_vid| {
+                //         self.in_graph[*nbr_vid].write().insert(*curr_vid);
+                //     });
+                // }
                 self.s_scratch.send(scratch).unwrap();
             }
         });
@@ -505,8 +531,9 @@ where
         let range = params_r.params_e.indexing_range;
         for des in pruned_list.iter() {
             debug_assert!(*des < params_r.params_e.max_points + params_r.num_frozen_pts);
-            let mut copy_of_neighhbors: Vec<usize> = Vec::new();
+            let mut copy_of_neighhbors: Vec<usize>;
             let mut prune_needed: bool = false;
+            let mut vids_added = Vec::with_capacity(range);
             {
                 let mut node_neighbors_f = self.final_graph[*des].write();
                 copy_of_neighhbors = node_neighbors_f.clone();
@@ -514,6 +541,7 @@ where
                     if node_neighbors_f.len() < ((GRAPH_SLACK_FACTOR * (range as f64)) as usize) {
                         node_neighbors_f.push(vid);
                         copy_of_neighhbors.push(vid);
+                        vids_added.push(vid);
                         prune_needed = false;
                     } else {
                         copy_of_neighhbors.push(vid);
@@ -521,8 +549,13 @@ where
                     }
                 }
             }
-
-            if prune_needed {
+            if !prune_needed {
+                // populate_in_graph - the regexp to find instances this must
+                // be tied to is: "final_graph\[.*\].*write\(\)"
+                vids_added.iter().for_each(|nbr_vid| {
+                    self.in_graph[*nbr_vid].write().insert(vid);
+                });
+            } else {
                 // println!("prune is needed: {}", vid);
                 let reserve_size: usize =
                     ((range as f64) * GRAPH_SLACK_FACTOR * 1.05).ceil() as usize;
@@ -553,13 +586,26 @@ where
                     scratch,
                     &self.data.read(),
                 );
-                {
-                    let mut segment = self.final_graph[*des].write();
-                    segment.clear();
-                    for i in 0..new_out_neighbors.len() {
-                        segment.push(new_out_neighbors[i]);
-                    }
-                }
+                self.update_graph_nbrs(*des, new_out_neighbors, true);
+                // let old_segment: Vec<usize>;
+                // {
+                //     let mut segment = self.final_graph[*des].write();
+                //     old_segment = segment.clone();
+                //     segment.clear();
+                //     for i in 0..new_out_neighbors.len() {
+                //         segment.push(new_out_neighbors[i]);
+                //     }
+                // }
+                // {
+                //     // populate_in_graph - the regexp to find instances this must
+                //     // be tied to is: "final_graph\[.*\].*write\(\)"
+                //     old_segment.iter().for_each(|nbr_vid| {
+                //         self.in_graph[*nbr_vid].write().remove(des);
+                //     });
+                //     new_out_neighbors.iter().for_each(|nbr_vid| {
+                //         self.in_graph[*nbr_vid].write().insert(*des);
+                //     });
+                // }
             }
         }
     }
@@ -721,6 +767,47 @@ where
         Ok(vids)
     }
 
+    #[inline(always)]
+    fn update_graph_nbrs(
+        &self,
+        vid: usize,
+        new_nbrs: impl IntoIterator<Item = usize>,
+        update_in_graph: bool,
+    ) {
+        let mut old_segment: Option<(Vec<usize>, Vec<usize>)> = None;
+        {
+            let mut segment = self.final_graph[vid].write();
+            if update_in_graph {
+                let mut nbrs_clone = Vec::new();
+                let segment_clone = segment.clone();
+                segment.clear();
+                new_nbrs.into_iter().for_each(|nbr_vid| {
+                    segment.push(nbr_vid);
+                    nbrs_clone.push(nbr_vid);
+                });
+                old_segment = Some((segment_clone, nbrs_clone));
+            } else {
+                segment.clear();
+                new_nbrs.into_iter().for_each(|nbr_vid| {
+                    segment.push(nbr_vid);
+                })
+            }
+        }
+        match old_segment {
+            Some((old_vids, nbrs_copy)) => {
+                // populate_in_graph - the regexp to find instances this must
+                // be tied to is: "final_graph\[.*\].*write\(\)"
+                old_vids.iter().for_each(|nbr_vid| {
+                    self.in_graph[*nbr_vid].write().remove(&vid);
+                });
+                nbrs_copy.into_iter().for_each(|nbr_vid| {
+                    self.in_graph[nbr_vid].write().insert(vid);
+                });
+            }
+            None => {}
+        }
+    }
+
     // this is a *lazy* delete, the items just gets marked as removed!
     fn delete(&self, eids: &[EId]) -> Result<(), Box<dyn std::error::Error>> {
         let mut delete_set = self.delete_set.write();
@@ -737,28 +824,104 @@ where
         Ok(())
     }
 
+    fn process_delete(
+        &self,
+        vid: usize,
+        delete_set: &HashSet<usize>,
+        params_r: &DiskANNParamsInternal,
+        data: &AlignedDataStore,
+    ) {
+        // TODO(infrawhispers) - what should this be set as?
+        let mut expanded_nodes_set: Vec<usize> = Vec::with_capacity(10);
+
+        // first pool all the items that we care about
+        {
+            self.final_graph[vid].read().iter().for_each(|nbr_vid| {
+                if !delete_set.contains(nbr_vid) && *nbr_vid != vid {
+                    expanded_nodes_set.push(*nbr_vid);
+                }
+            });
+        }
+        if expanded_nodes_set.len() < params_r.params_e.indexing_range {
+            self.update_graph_nbrs(vid, expanded_nodes_set, true);
+            return;
+        }
+        let mut expanded_nbrs_vec: Vec<ann::INode> = Vec::with_capacity(expanded_nodes_set.len());
+        expanded_nodes_set.iter().for_each(|nbr_vid| {
+            let arr_a: &[f32] = &data.data[*nbr_vid * params_r.aligned_dim
+                ..(*nbr_vid * params_r.aligned_dim) + params_r.aligned_dim];
+            let arr_b: &[f32] = &data.data
+                [vid * params_r.aligned_dim..(vid * params_r.aligned_dim) + params_r.aligned_dim];
+            expanded_nbrs_vec.push(ann::INode {
+                vid: *nbr_vid,
+                distance: TMetric::compare(arr_a, arr_b),
+                flag: false,
+            })
+        });
+        expanded_nbrs_vec.sort();
+        let mut pruned_list: Vec<usize> = Vec::with_capacity(params_r.params_e.indexing_range);
+        self.occlude_list(
+            vid,
+            &mut expanded_nbrs_vec,
+            params_r.params_e.indexing_alpha,
+            params_r.params_e.indexing_range,
+            params_r.params_e.indexing_maxc,
+            &mut pruned_list,
+            params_r,
+            data,
+        );
+        self.update_graph_nbrs(vid, pruned_list, true);
+    }
+
     fn consolidate_deletes(&self) {
         let old_delete_set: HashSet<usize>;
         {
             old_delete_set = self.delete_set.read().clone();
         }
-        let vid_max = self.id_increment.load(std::sync::atomic::Ordering::SeqCst);
-        // let params_r = self.params_r.read(); <-- take the pool size from here!
         let start = Instant::now();
-
+        let params_r = self.params.read();
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(1)
             .build()
             .unwrap();
-
+        let data = self.data.read();
         pool.install(|| {
-            // 0..
-            // old_delete_set.par_iter().for_each(|vid| {
-            // TODO(infrawhispers) - this is a *full* consolidation as we don't keep a reverse
-            // lookup map
-            // println!("vid to delete: {:?}", vid);
-            // });
+            // build a map of all vids we care about, these are vids that _link into_
+            // the nodes that we are about to remove!
+            let mut vids_to_visit: HashSet<usize> =
+                HashSet::with_capacity(params_r.params_e.indexing_range * old_delete_set.len());
+            old_delete_set.iter().for_each(|vid| {
+                let nbrs_linked = self.in_graph[*vid].read();
+                nbrs_linked
+                    .iter()
+                    .for_each(|nbr_vid| match old_delete_set.get(nbr_vid) {
+                        Some(_) => {}
+                        None => {
+                            vids_to_visit.insert(*nbr_vid);
+                        }
+                    });
+            });
+            vids_to_visit.par_iter().for_each(|vid| {
+                self.process_delete(*vid, &old_delete_set, &params_r, &data);
+            });
         });
+        let mut delete_set = self.delete_set.write();
+        let mut empty_slots = self.empty_slots.write();
+        let mut tag_to_location = self.tag_to_location.write();
+        let mut location_to_tag = self.location_to_tag.write();
+
+        // let empty_slots = self.
+        old_delete_set.iter().for_each(|vid| {
+            delete_set.remove(vid);
+            empty_slots.insert(*vid);
+            match location_to_tag.remove_entry(vid) {
+                Some((_, eid)) => {
+                    tag_to_location.remove(&eid);
+                }
+                None => {}
+            }
+        });
+
         println!("consolidate_delete time: {:?}", start.elapsed());
     }
 

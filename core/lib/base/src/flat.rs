@@ -202,7 +202,7 @@ where
     pub fn delete(&self, eids: &[ann::EId]) -> Result<(), Box<dyn std::error::Error>> {
         eids.iter().for_each(|eid| {
             let vid: usize;
-            let mut vid_found: bool = false;
+            let vid_found: bool;
             {
                 match self.eid_to_vid.read().get(eid) {
                     Some(vid_val) => {

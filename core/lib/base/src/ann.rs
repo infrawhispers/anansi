@@ -16,6 +16,16 @@ pub enum ANNTypes {
     Flat = 2,
 }
 
+pub trait IntoCopied {
+    fn into_copied<'a, T>(self) -> std::iter::Copied<Self::IntoIter>
+    where
+        Self: Sized + IntoIterator<Item = &'a T>,
+        T: 'a + Copy,
+    {
+        self.into_iter().copied()
+    }
+}
+
 // primary trait that enables an obj to act as an ANNIndex - this
 // allows us to use multiple different backends in the future.
 pub trait ANNIndex: Send + Sync {
