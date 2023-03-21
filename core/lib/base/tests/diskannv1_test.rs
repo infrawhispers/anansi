@@ -5,12 +5,11 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
+use std::sync::Arc;
 
 use base::ann;
 use base::ann::ANNIndex;
-// use base::ann::EId;
 use base::diskannv1;
-// use base::flat;
 use base::metric;
 
 struct SIFT<'a> {
@@ -116,7 +115,8 @@ mod test {
     use super::*;
     #[test]
     fn sift_small_ann() {
-        let directory = Path::new("../../../../eval/data/siftsmall/");
+        // let directory = Path::new("../../../../eval/data/siftsmall/");'
+        let directory = Path::new("../../data/siftsmall/");
         let dims: usize = 128;
         let loader = SIFT {
             directory: directory,
@@ -150,15 +150,21 @@ mod test {
             params: diskannv1::DiskANNParams {
                 dim: 128,
                 max_points: eids.len(),
-                indexing_threads: 1,
+                indexing_threads: None,
                 indexing_range: 64,       // R
                 indexing_queue_size: 100, // L
                 indexing_maxc: 140,       // C
-                indexing_alpha: 1.2,      // alpha
+                indexing_alpha: 1.2,      // alph
+                maintenance_period_millis: 500,
             },
         };
-        let ann_idx: diskannv1::DiskANNV1Index<metric::MetricL2> =
-            ann::ANNIndex::new(&params).expect("error creating diskannv1 index");
+        let ann_idx: Arc<diskannv1::DiskANNV1Index<metric::MetricL2>> =
+            Arc::new(ann::ANNIndex::new(&params).expect("error creating diskannv1 index"));
+        let _t_ann_idx = ann_idx.clone();
+        let _t = std::thread::spawn(move || {
+            _t_ann_idx.maintain();
+        });
+
         assert!(
             ann_idx.batch_insert(&eids, &base_vectors).is_ok(),
             "unexpexted err on batch_insert to the vector store"

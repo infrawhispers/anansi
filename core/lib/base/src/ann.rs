@@ -1,3 +1,4 @@
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
@@ -29,14 +30,14 @@ pub trait IntoCopied {
 // primary trait that enables an obj to act as an ANNIndex - this
 // allows us to use multiple different backends in the future.
 pub trait ANNIndex: Send + Sync {
-    fn new(params: &ANNParams) -> Result<Self, Box<dyn std::error::Error>>
+    fn new(params: &ANNParams) -> anyhow::Result<Self>
     where
         Self: Sized;
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>>;
-    fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>>;
-    fn delete(&self, eids: &[EId]) -> Result<(), Box<dyn std::error::Error>>;
-    fn search(&self, q: &[f32], k: usize) -> Result<Vec<Node>, Box<dyn std::error::Error>>;
-    fn save(&self) -> Result<(), Box<dyn std::error::Error>>;
+    fn insert(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()>;
+    fn delete(&self, eids: &[EId]) -> anyhow::Result<()>;
+    fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<Node>>;
+    fn save(&self) -> anyhow::Result<()>;
 }
 
 // we use a 16 byte representation for EIds - this would allow clients to

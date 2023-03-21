@@ -7,6 +7,7 @@ use crate::metric;
 use crate::nn_query_scratch;
 use crate::nn_queue;
 
+use anyhow::bail;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::RwLock;
 use rand::distributions::{Distribution, Standard};
@@ -18,31 +19,29 @@ use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::ops::ControlFlow;
 use std::sync::atomic::AtomicUsize;
-// use std::sync::atomic::Ordering::SeqCst;
 use std::sync::Arc;
+use std::thread::available_parallelism;
 use std::time::Instant;
+use std::{thread, time};
 
 #[derive(Debug, Clone, Copy)]
 pub struct DiskANNParams {
     pub dim: usize,
     pub max_points: usize,
-    pub indexing_threads: usize,
+    pub indexing_threads: Option<usize>,
     pub indexing_range: usize,
     pub indexing_queue_size: usize,
     pub indexing_maxc: usize,
     pub indexing_alpha: f32,
+    pub maintenance_period_millis: u64,
 }
 
 #[allow(dead_code)]
 pub struct DiskANNParamsInternal {
     pub params_e: DiskANNParams,
     pub aligned_dim: usize,
-    pub data_len: usize,
     pub num_frozen_pts: usize,
-    pub total_internal_points: usize,
     pub nd: usize,
-    pub neighbor_len: usize,
-    pub node_size: usize,
     pub start: usize,
     pub saturate_graph: bool,
 }
@@ -63,6 +62,8 @@ pub struct DiskANNV1Index<TMetric: metric::Metric<f32>> {
     empty_slots: Arc<RwLock<HashSet<usize>>>,
     s_scratch: Sender<nn_query_scratch::InMemoryQueryScratch>,
     r_scratch: Receiver<nn_query_scratch::InMemoryQueryScratch>,
+    indexing_pool: rayon::ThreadPool,
+    // handle: Option<thread::JoinHandle<()>>,
 }
 
 const GRAPH_SLACK_FACTOR: f64 = 1.3;
@@ -76,7 +77,7 @@ impl<TMetric> ann::ANNIndex for DiskANNV1Index<TMetric>
 where
     TMetric: metric::Metric<f32>,
 {
-    fn new(params: &ann::ANNParams) -> Result<DiskANNV1Index<TMetric>, Box<dyn std::error::Error>> {
+    fn new(params: &ann::ANNParams) -> anyhow::Result<DiskANNV1Index<TMetric>> {
         let diskann_params: &DiskANNParams = match params {
             ann::ANNParams::Flat { params: _ } => {
                 unreachable!("incorrect params passed for construction")
@@ -88,16 +89,16 @@ where
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         self.batch_insert(eids, data)
     }
-    fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+    fn insert(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
         self.insert(eids, data)
     }
-    fn delete(&self, eids: &[EId]) -> Result<(), Box<dyn std::error::Error>> {
+    fn delete(&self, eids: &[EId]) -> anyhow::Result<()> {
         self.delete(eids)
     }
-    fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
+    fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<ann::Node>> {
         self.search(q, k)
     }
-    fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn save(&self) -> anyhow::Result<()> {
         unimplemented!()
     }
 }
@@ -226,6 +227,7 @@ where
             return;
         }
         let data = &self.data.read();
+        // self.indexing_pool.install(|| {
         visit_order.par_iter().for_each(|curr_vid| {
             let should_prune: bool;
             let graph_copy: Vec<usize>;
@@ -288,7 +290,8 @@ where
                 // }
                 self.s_scratch.send(scratch).unwrap();
             }
-        });
+        })
+        // })
     }
 
     fn iterate_to_fixed_point(
@@ -318,8 +321,8 @@ where
         let inserted_into_pool_rb: &mut RoaringTreemap = &mut scratch.inserted_into_pool_rb;
         let id_scratch: &mut Vec<usize> = &mut scratch.id_scratch;
         let dist_scratch: &mut Vec<f32> = &mut scratch.dist_scratch;
-        // debug_assert!(id_scratch.len() == 0, "scratch space must be cleared");
-        // debug_assert!(expanded_nodes.len() == 0, "scratch space must be cleared");
+        debug_assert!(id_scratch.len() == 0, "scratch space must be cleared");
+        debug_assert!(expanded_nodes.len() == 0, "scratch space must be cleared");
         let fast_iterate: bool =
             params_r.params_e.max_points + params_r.num_frozen_pts <= MAX_POINTS_FOR_USING_BITSET;
 
@@ -627,10 +630,11 @@ where
             true,
             false,
         );
-
         {
             let pool = &mut scratch.pool;
+            let delete_set = self.delete_set.read();
             pool.retain(|&nn| nn.vid != vid);
+            pool.retain(|&nn| !delete_set.contains(&nn.vid));
         }
         debug_assert!(pruned_list.len() == 0);
         self.prune_neighbors(vid, pruned_list, params_r, scratch, &self.data.read());
@@ -643,7 +647,7 @@ where
         );
     }
 
-    fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
+    fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<ann::Node>> {
         let mut init_ids: Vec<usize> = Vec::new();
         let mut q_aligned;
         let params_r = self.params.read();
@@ -720,7 +724,7 @@ where
         );
     }
 
-    fn reserve_locations(&self, count: usize) -> Result<Vec<usize>, Box<dyn std::error::Error>> {
+    fn reserve_locations(&self, count: usize) -> anyhow::Result<Vec<usize>> {
         let mut vids: Vec<usize> = Vec::with_capacity(count);
         let mut empty_slots_w = self.empty_slots.write();
         if !empty_slots_w.is_empty() {
@@ -749,13 +753,11 @@ where
             vids.iter().for_each(|vid| {
                 empty_slots_w.insert(*vid);
             });
-            return Err(Box::new(errors::ANNError::GenericError{
-                message: format!(
-                    "reservation ({}) would lead to > max_points ({}) in index, resizing not supported as yet",
-                    count,
-                    params_r.params_e.max_points,
-                ),
-            }));
+            bail!(
+                "reservation ({}) would lead to > max_points ({}) in index, resizing not supported as yet",
+                count,
+                params_r.params_e.max_points,
+            );
         }
         let vid_s = self
             .id_increment
@@ -809,7 +811,7 @@ where
     }
 
     // this is a *lazy* delete, the items just gets marked as removed!
-    fn delete(&self, eids: &[EId]) -> Result<(), Box<dyn std::error::Error>> {
+    fn delete(&self, eids: &[EId]) -> anyhow::Result<()> {
         let mut delete_set = self.delete_set.write();
         let mut tag_to_location = self.tag_to_location.write();
         let mut location_to_tag = self.location_to_tag.write();
@@ -921,24 +923,20 @@ where
                 None => {}
             }
         });
-
         println!("consolidate_delete time: {:?}", start.elapsed());
     }
 
-    fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+    fn insert(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
         // we assume everything is good!
         {
             let params_r = self.params.read();
             let expected_len = eids.len() * params_r.aligned_dim;
             if data.len() != expected_len {
-                return Err(Box::new(errors::ANNError::GenericError {
-                    message: format!(
-                        "points.len: {} !=  aligned_dim * eids.len: {}",
-                        data.len(),
-                        expected_len,
-                    )
-                    .into(),
-                }));
+                bail!(
+                    "points.len: {} !=  aligned_dim * eids.len: {}",
+                    data.len(),
+                    expected_len
+                );
             }
         }
         let vids = self.reserve_locations(eids.len())?;
@@ -1008,22 +1006,57 @@ where
         Ok(())
     }
 
-    fn new(params: &DiskANNParams) -> Result<DiskANNV1Index<TMetric>, Box<dyn std::error::Error>> {
+    pub fn maintain(&self) {
+        let maintenance_period: u64;
+        {
+            maintenance_period = self.params.read().params_e.maintenance_period_millis;
+        }
+        loop {
+            thread::sleep(time::Duration::from_millis(maintenance_period));
+            self.consolidate_deletes();
+        }
+    }
+
+    fn new(params: &DiskANNParams) -> anyhow::Result<DiskANNV1Index<TMetric>> {
         let num_frozen_pts: usize = 1;
         let total_internal_points: usize = params.max_points + num_frozen_pts;
         let aligned_dim: usize = ann::round_up(params.dim.try_into().unwrap()) as usize;
-        let data_len: usize = (aligned_dim + 1) * std::mem::size_of::<f32>();
+        let mut params_e = params.clone();
+        match params_e.indexing_threads {
+            Some(_) => {}
+            None => {
+                let suggested = available_parallelism();
+                match suggested {
+                    Ok(suggestion) => params_e.indexing_threads = Some(suggestion.into()),
+                    Err(_) => params_e.indexing_threads = Some(4),
+                }
+            }
+        }
+        let indexing_pool: rayon::ThreadPool;
+        match params_e.indexing_threads {
+            Some(cnt_threads) => {
+                match rayon::ThreadPoolBuilder::new()
+                    .num_threads(cnt_threads)
+                    .build()
+                {
+                    Ok(pool) => indexing_pool = pool,
+                    Err(_) => {
+                        bail!("unable to build the threading pool");
+                    }
+                }
+            }
+            None => {
+                bail!("params_e.indexing_threads unexpectedly is zero");
+            }
+        }
+
         let paramsi: Arc<RwLock<DiskANNParamsInternal>> =
             Arc::new(RwLock::new(DiskANNParamsInternal {
                 params_e: params.clone(),
                 aligned_dim: aligned_dim,
-                data_len: data_len,
                 nd: params.max_points,
-                neighbor_len: 0,
-                node_size: 0,
                 saturate_graph: false,
                 num_frozen_pts: num_frozen_pts,
-                total_internal_points: total_internal_points,
                 start: params.max_points,
             }));
 
@@ -1054,9 +1087,9 @@ where
         {
             let params = paramsi.read();
             let mut lt = location_to_tag.write();
-            lt.reserve(params.total_internal_points);
+            lt.reserve(total_internal_points);
             let mut tl = tag_to_location.write();
-            tl.reserve(params.total_internal_points);
+            tl.reserve(total_internal_points);
             data = Arc::new(RwLock::new(AlignedDataStore::new(
                 params.params_e.max_points + 1,
                 params.aligned_dim,
@@ -1081,6 +1114,7 @@ where
             delete_set,
             empty_slots,
             metric: PhantomData,
+            indexing_pool: indexing_pool,
             s_scratch: s,
             r_scratch: r,
         };

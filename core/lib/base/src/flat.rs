@@ -1,9 +1,9 @@
+use anyhow::bail;
+use parking_lot::RwLock;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::marker::PhantomData;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
-
-use parking_lot::RwLock;
 
 use super::av_store;
 use super::errors;
@@ -35,7 +35,7 @@ impl<TMetric> ann::ANNIndex for FlatIndex<TMetric>
 where
     TMetric: metric::Metric<f32>,
 {
-    fn new(params: &ann::ANNParams) -> Result<FlatIndex<TMetric>, Box<dyn std::error::Error>> {
+    fn new(params: &ann::ANNParams) -> anyhow::Result<FlatIndex<TMetric>> {
         let flat_params: &FlatParams = match params {
             ann::ANNParams::Flat { params } => params,
             _ => {
@@ -60,23 +60,20 @@ where
             match self.insert(*eid, &data[idx * data_len..idx * data_len + data_len]) {
                 Ok(_) => {}
                 Err(err) => {
-                    return Err(err);
+                    return Err(err.into());
                 }
             }
         }
         Ok(())
     }
 
-    fn insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+    fn insert(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
         if (data.len() % eids.len()) != 0 {
-            return Err(Box::new(errors::ANNError::GenericError {
-                message: format!(
-                    "data is not an exact multiple of eids - data_len: {} | eids_len: {}",
-                    eids.len(),
-                    data.len(),
-                )
-                .into(),
-            }));
+            bail!(
+                "data is not an exact multiple of eids - data_len: {} | eids_len: {}",
+                eids.len(),
+                data.len()
+            );
         }
         let data_len = data.len() / eids.len();
         for (idx, eid) in eids.iter().enumerate() {
@@ -89,15 +86,15 @@ where
         }
         Ok(())
     }
-    fn delete(&self, eids: &[EId]) -> Result<(), Box<dyn std::error::Error>> {
+    fn delete(&self, eids: &[EId]) -> anyhow::Result<()> {
         self.delete(eids)
     }
 
-    fn search(&self, q: &[f32], k: usize) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
+    fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<ann::Node>> {
         self.search(q, k)
     }
 
-    fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+    fn save(&self) -> anyhow::Result<()> {
         Ok(())
     }
 }
@@ -106,9 +103,8 @@ impl<TMetric> FlatIndex<TMetric>
 where
     TMetric: metric::Metric<f32>,
 {
-    pub fn new(params: &FlatParams) -> Result<FlatIndex<TMetric>, Box<dyn std::error::Error>> {
+    pub fn new(params: &FlatParams) -> anyhow::Result<FlatIndex<TMetric>> {
         let aligned_dim = ann::round_up(params.dim as u32) as usize;
-        println!("aligned dim is: {}", aligned_dim);
         let mut v_per_segment: usize = (params.segment_size_kb * 1000) / (aligned_dim as usize * 4);
         if v_per_segment < 1000 {
             v_per_segment = 1000
@@ -140,16 +136,13 @@ where
             aligned_dim: aligned_dim,
         })
     }
-    pub fn insert(&self, eid: ann::EId, point: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn insert(&self, eid: ann::EId, point: &[f32]) -> anyhow::Result<()> {
         if point.len() > self.aligned_dim {
-            return Err(Box::new(errors::ANNError::GenericError {
-                message: format!(
-                    "point dim: {} > aligned_dim: {}",
-                    point.len(),
-                    self.aligned_dim,
-                )
-                .into(),
-            }));
+            bail!(
+                "point dim: {} > aligned_dim: {}",
+                point.len(),
+                self.aligned_dim
+            );
         }
         let mut padded_point: &[f32] = point;
         let mut data: Vec<f32>;
@@ -186,9 +179,9 @@ where
         }
         match self.datastore.read().get(&segment_id) {
             None => {
-                return Err(Box::new(errors::ANNError::GenericError {
-                    message: "unexpectedly, the segement is missing when it was previously inserted - bailing".to_string(),
-                }))
+                bail!(
+                    "unexpectedly, the segement is missing when it was previously inserted - bailing",
+                );
             }
             Some(segment) => segment
                 .write()
@@ -199,7 +192,7 @@ where
 
         Ok(())
     }
-    pub fn delete(&self, eids: &[ann::EId]) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn delete(&self, eids: &[ann::EId]) -> anyhow::Result<()> {
         eids.iter().for_each(|eid| {
             let vid: usize;
             let vid_found: bool;
@@ -226,16 +219,9 @@ where
 
         Ok(())
     }
-    pub fn search(
-        &self,
-        q: &[f32],
-        k: usize,
-    ) -> Result<Vec<ann::Node>, Box<dyn std::error::Error>> {
+    pub fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<ann::Node>> {
         if q.len() > self.aligned_dim {
-            return Err(Box::new(errors::ANNError::GenericError {
-                message: format!("query dim: {} > aligned_dim: {}", q.len(), self.aligned_dim)
-                    .into(),
-            }));
+            bail!("query dim: {} > aligned_dim: {}", q.len(), self.aligned_dim);
         }
         // maybe we want to keep around a bunch of these in a pool we can pull from?
         let mut res_heap: BinaryHeap<ann::Node> = BinaryHeap::with_capacity(k + 1);
@@ -371,12 +357,6 @@ mod tests {
         index
             .delete(&delete_set)
             .expect("unable to remove the item from the database");
-        // index.delete([0u8; 16]) {
-        //     Ok(_) => {}
-        //     Err(_) => {
-        //         panic!("no err should throw on deletion of existing item");
-        //     }
-        // }
         // then issue the search and ensure the old mapping does
         // not come up
         match index.search(&point_search, 1) {
