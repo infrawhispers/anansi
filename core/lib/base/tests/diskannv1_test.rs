@@ -114,6 +114,8 @@ impl SIFT<'_> {
 mod test {
     use super::*;
     #[test]
+    fn sift_small_deletes() {}
+    #[test]
     fn sift_small_ann() {
         // let directory = Path::new("../../../../eval/data/siftsmall/");'
         let directory = Path::new("../../data/siftsmall/");
@@ -137,7 +139,6 @@ mod test {
             );
             eids[i] = eid;
         }
-
         let query_vectors = loader
             .fetch_vectors("sift_query.fvecs", 128)
             .expect("unable to fetch the query vectors");
@@ -194,7 +195,6 @@ mod test {
             let nodes_gnd_truth = _truth_vectors.get(&(query_eid)).unwrap();
             let intersection_count = nodes_gnd_truth.intersection(&nodes_found).count();
             total_intersection_count += intersection_count;
-            // individual queries for k = 10 yield {9,10} nn
             assert!(
                 (intersection_count as f32 / (k as f32)) * 100.0 >= 90.0f32,
                 "for vid: {} | found: {}/{} ",

@@ -17,8 +17,8 @@ pub struct InMemoryQueryScratch {
     pub best_l_nodes: NNPriorityQueue,
     pub pool: Vec<ann::INode>,
     // _marker: NoCopy
-    curr_l: usize,
-    curr_r: usize,
+    // curr_l: usize,
+    // curr_r: usize,
 }
 
 impl InMemoryQueryScratch {
@@ -38,8 +38,8 @@ impl InMemoryQueryScratch {
             pool: Vec::with_capacity(
                 3 * params.params_e.indexing_queue_size + params.params_e.indexing_range,
             ),
-            curr_l: params.params_e.indexing_queue_size,
-            curr_r: params.params_e.indexing_range,
+            // curr_l: params.params_e.indexing_queue_size,
+            // curr_r: params.params_e.indexing_range,
         }
     }
     pub fn clear(&mut self) {

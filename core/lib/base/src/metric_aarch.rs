@@ -1,4 +1,3 @@
-use crate::metric::{hamming_similarity, l1_similarity, l2_similarity};
 use core::arch::aarch64::*;
 
 #[cfg(all(target_feature = "neon",))]
@@ -163,6 +162,7 @@ pub(crate) unsafe fn hamming_similarity_aarch(arr_a: &[f32], arr_b: &[f32]) -> f
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::metric::{hamming_similarity, l1_similarity, l2_similarity};
     #[test]
     fn test_popcnt_simd() {
         #[cfg(all(target_arch = "aarch64", target_feature = "neon",))]
