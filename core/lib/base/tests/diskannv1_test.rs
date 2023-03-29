@@ -6,6 +6,7 @@ use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use base::ann;
 use base::ann::ANNIndex;
@@ -71,18 +72,14 @@ impl SIFT<'_> {
         filename: &str,
         k: usize,
         num_closest: usize,
-    ) -> anyhow::Result<HashMap<base::ann::EId, HashSet<base::ann::EId>>> {
+    ) -> anyhow::Result<HashMap<base::ann::EId, Vec<base::ann::EId>>> {
         let truth_vecs = self.fetch_ground_truth(filename, num_closest)?;
-        let mut truth_by_id: HashMap<base::ann::EId, HashSet<base::ann::EId>> = HashMap::new();
+        let mut truth_by_id: HashMap<base::ann::EId, Vec<base::ann::EId>> = HashMap::new();
         for id in 0..truth_vecs.len() / num_closest {
             let truth_vec = truth_vecs
                 [(id * num_closest) as usize..(id * num_closest + num_closest) as usize]
                 .to_vec();
-            let mut eids: HashSet<base::ann::EId> = HashSet::with_capacity(k);
-            // vec![[0u8; 16]; truth_vec.len()];
-            // if id == 10 {
-            //     println!("{:?}", truth_vec);
-            // }
+            let mut truth_eids: Vec<base::ann::EId> = Vec::with_capacity(k);
             for i in 0..truth_vec.len() {
                 if i == k {
                     break;
@@ -93,18 +90,15 @@ impl SIFT<'_> {
                     truth_vec[i].try_into().unwrap(),
                     std::mem::size_of::<usize>(),
                 );
-                eids.insert(eid);
+                truth_eids.push(eid);
             }
-            // truth_vec.into_iter().enumerate().for_each(|(i, x)| {
-            //     eids[i] = eid;
-            // });
             let mut ref_eid: base::ann::EId = [0u8; 16];
             BigEndian::write_uint(
                 &mut ref_eid,
                 id.try_into().unwrap(),
                 std::mem::size_of::<usize>(),
             );
-            truth_by_id.insert(ref_eid, eids);
+            truth_by_id.insert(ref_eid, truth_eids);
         }
         Ok(truth_by_id)
     }
@@ -114,11 +108,109 @@ impl SIFT<'_> {
 mod test {
     use super::*;
     #[test]
-    fn sift_small_deletes() {}
+    fn sift_small_deletes() {
+        let directory = Path::new("../../../../eval/data/siftsmall/");
+        let dims: usize = 128;
+        let loader = SIFT {
+            directory: directory,
+            dims: dims,
+        };
+        const FIRST_N_TO_DELETE: usize = 2;
+        let k: usize = 10;
+        let base_vectors = loader
+            .fetch_vectors("sift_base.fvecs", 128)
+            .expect("unable to fetch base vectors from disk");
+        let mut eids: Vec<base::ann::EId> = vec![[0u8; 16]; base_vectors.len() / 128];
+        for i in 0..base_vectors.len() / 128 {
+            let mut eid: base::ann::EId = [0u8; 16];
+            BigEndian::write_uint(
+                &mut eid,
+                i.try_into().unwrap(),
+                std::mem::size_of::<usize>(),
+            );
+            eids[i] = eid;
+        }
+        let query_vectors = loader
+            .fetch_vectors("sift_query.fvecs", 128)
+            .expect("unable to fetch the query vectors");
+
+        let truth_vectors = loader
+            .fetch_ground_truth_by_id("sift_groundtruth.ivecs", k + FIRST_N_TO_DELETE, 100)
+            .expect("fetching the items");
+        let params = ann::ANNParams::DiskANN {
+            params: diskannv1::DiskANNParams {
+                dim: 128,
+                max_points: eids.len(),
+                indexing_threads: None,
+                indexing_range: 64,       // R
+                indexing_queue_size: 100, // L
+                indexing_maxc: 140,       // C
+                indexing_alpha: 1.2,      // alpha
+                maintenance_period_millis: 500,
+            },
+        };
+        let ann_idx: Arc<diskannv1::DiskANNV1Index<metric::MetricL2>> =
+            Arc::new(ann::ANNIndex::new(&params).expect("error creating diskannv1 index"));
+        let maintain_arc = ann_idx.clone();
+        let _t = std::thread::spawn(move || {
+            maintain_arc.maintain();
+        });
+        assert!(
+            ann_idx.batch_insert(&eids, &base_vectors).is_ok(),
+            "unexpexted err on batch_insert to the vector store"
+        );
+        for i in 0..10 {
+            let query_vec = query_vectors[(i * dims) as usize..(i * dims + dims) as usize].to_vec();
+            let mut query_eid: ann::EId = [0u8; 16];
+            BigEndian::write_uint(
+                &mut query_eid,
+                i.try_into().unwrap(),
+                std::mem::size_of::<usize>(),
+            );
+            // now pick out the closest values from ground_truth and remove them!
+            let closest_ids = truth_vectors
+                .get(&query_eid)
+                .expect("unexpectedly missing the closest eids for query_eid: {:?}");
+            ann_idx
+                .delete(&closest_ids[0..FIRST_N_TO_DELETE])
+                .expect("unexpected error when deleting records from the index");
+            // std::thread::sleep(Duration::from_millis(1000));
+            // now issue a query for the top k!
+            let nns = ann_idx
+                .search(&query_vec, k)
+                .expect("unexpected error fetching the closest vectors");
+            let mut nodes_found: HashSet<ann::EId> = HashSet::new();
+            nns.iter().for_each(|nn| {
+                let mut eid: base::ann::EId = [0u8; 16];
+                BigEndian::write_uint(
+                    &mut eid,
+                    nn.vid.try_into().unwrap(),
+                    std::mem::size_of::<usize>(),
+                );
+                nodes_found.insert(eid);
+            });
+            // then query for the items we care about!
+            let mut nodes_gnd_truth: HashSet<ann::EId> = HashSet::new();
+            closest_ids[FIRST_N_TO_DELETE..FIRST_N_TO_DELETE + k]
+                .iter()
+                .for_each(|nn_eid| {
+                    nodes_gnd_truth.insert(*nn_eid);
+                });
+            let intersection_count = nodes_gnd_truth.intersection(&nodes_found).count();
+            assert!(
+                (intersection_count as f32 / (k as f32)) * 100.0 >= 90.0f32,
+                "for vid: {} | found: {}/{} ",
+                i,
+                intersection_count,
+                k
+            );
+        }
+    }
+
     #[test]
     fn sift_small_ann() {
-        // let directory = Path::new("../../../../eval/data/siftsmall/");'
-        let directory = Path::new("../../data/siftsmall/");
+        let directory = Path::new("../../../../eval/data/siftsmall/");
+        // let directory = Path::new("../../data/siftsmall/");
         let dims: usize = 128;
         let loader = SIFT {
             directory: directory,
@@ -143,10 +235,9 @@ mod test {
             .fetch_vectors("sift_query.fvecs", 128)
             .expect("unable to fetch the query vectors");
 
-        let _truth_vectors = loader
+        let truth_vectors = loader
             .fetch_ground_truth_by_id("sift_groundtruth.ivecs", k, 100)
             .expect("fetching the items");
-        let _num_truth_vectors = _truth_vectors.len();
         let params = ann::ANNParams::DiskANN {
             params: diskannv1::DiskANNParams {
                 dim: 128,
@@ -155,7 +246,7 @@ mod test {
                 indexing_range: 64,       // R
                 indexing_queue_size: 100, // L
                 indexing_maxc: 140,       // C
-                indexing_alpha: 1.2,      // alph
+                indexing_alpha: 1.2,      // alpha
                 maintenance_period_millis: 500,
             },
         };
@@ -171,7 +262,7 @@ mod test {
             "unexpexted err on batch_insert to the vector store"
         );
         let mut total_intersection_count: usize = 0;
-        for i in 0.._num_truth_vectors {
+        for i in 0..truth_vectors.len() {
             let query_vec = query_vectors[(i * dims) as usize..(i * dims + dims) as usize].to_vec();
             let mut query_eid: ann::EId = [0u8; 16];
             BigEndian::write_uint(
@@ -192,7 +283,12 @@ mod test {
                 );
                 nodes_found.insert(eid);
             }
-            let nodes_gnd_truth = _truth_vectors.get(&(query_eid)).unwrap();
+            let mut nodes_gnd_truth: HashSet<ann::EId> = HashSet::new();
+            let closest_ids = truth_vectors.get(&(query_eid)).unwrap();
+            closest_ids[0..k].iter().for_each(|nn_eid| {
+                nodes_gnd_truth.insert(*nn_eid);
+            });
+
             let intersection_count = nodes_gnd_truth.intersection(&nodes_found).count();
             total_intersection_count += intersection_count;
             assert!(
@@ -204,7 +300,7 @@ mod test {
             );
         }
         assert!(
-            (total_intersection_count as f32 / (k * _num_truth_vectors) as f32) > 0.95f32,
+            (total_intersection_count as f32 / (k * truth_vectors.len()) as f32) > 0.95f32,
             "unexpectedly lowered true neighbours found"
         );
     }
