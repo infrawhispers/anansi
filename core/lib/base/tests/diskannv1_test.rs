@@ -174,7 +174,6 @@ mod test {
             ann_idx
                 .delete(&closest_ids[0..FIRST_N_TO_DELETE])
                 .expect("unexpected error when deleting records from the index");
-            // std::thread::sleep(Duration::from_millis(1000));
             // now issue a query for the top k!
             let nns = ann_idx
                 .search(&query_vec, k)
