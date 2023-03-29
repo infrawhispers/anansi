@@ -109,7 +109,8 @@ mod test {
     use super::*;
     #[test]
     fn sift_small_deletes() {
-        let directory = Path::new("../../../../eval/data/siftsmall/");
+        // let directory = Path::new("../../../../eval/data/siftsmall/");
+        let directory = Path::new("../../data/siftsmall/");
         let dims: usize = 128;
         let loader = SIFT {
             directory: directory,
@@ -208,8 +209,8 @@ mod test {
 
     #[test]
     fn sift_small_ann() {
-        let directory = Path::new("../../../../eval/data/siftsmall/");
-        // let directory = Path::new("../../data/siftsmall/");
+        // let directory = Path::new("../../../../eval/data/siftsmall/");
+        let directory = Path::new("../../data/siftsmall/");
         let dims: usize = 128;
         let loader = SIFT {
             directory: directory,

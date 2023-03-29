@@ -11,4 +11,4 @@ rustflags = ["-C", "target-cpu=native"]
 build-std = ["panic_abort", "std"]
 
 [build]
-target = "x86_64-unknown-linux-gnu"
+target = "aarch64-apple-darwin"

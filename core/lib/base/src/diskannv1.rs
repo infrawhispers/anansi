@@ -62,7 +62,7 @@ pub struct DiskANNV1Index<TMetric: metric::Metric<f32>> {
     empty_slots: Arc<RwLock<HashSet<usize>>>,
     s_scratch: Sender<nn_query_scratch::InMemoryQueryScratch>,
     r_scratch: Receiver<nn_query_scratch::InMemoryQueryScratch>,
-    indexing_pool: rayon::ThreadPool,
+    // indexing_pool: rayon::ThreadPool,
     // handle: Option<thread::JoinHandle<()>>,
 }
 
@@ -186,6 +186,7 @@ where
     }
     fn link(&self, visit_order: Vec<usize>, do_prune: bool) {
         let params_r = self.params.read();
+        // TODO(infrawhispers) - WASM + Rayon on M1 macs is broken!
         visit_order.par_iter().for_each(|vid| {
             let mut pruned_list: Vec<usize> = Vec::new();
             // let mut scratch: nn_query_scratch::InMemoryQueryScratch =
@@ -209,8 +210,7 @@ where
             //     // be tied to is: "final_graph\[.*\].*write\(\)"
             //     old_segment.iter().for_each(|nbr_vid| {
             //         self.in_graph[*nbr_vid].write().remove(vid);
-            //     });
-            //     pruned_list.iter().for_each(|nbr_vid| {
+            //     });r
             //         self.in_graph[*nbr_vid].write().insert(*vid);
             //     });
             // }
@@ -656,6 +656,15 @@ where
         }
         q_aligned = AlignedDataStore::new(params_r.aligned_dim, 1);
         q_aligned.data[0..q.len()].clone_from_slice(q);
+        if TMetric::uses_preprocessor() {
+            match TMetric::pre_process(&q_aligned.data[0..q_aligned.data.len()]) {
+                Some(vec) => {
+                    q_aligned.data[0..q.len()].copy_from_slice(&vec[0..vec.len()]);
+                }
+                None => {}
+            }
+        }
+
         let mut scratch: nn_query_scratch::InMemoryQueryScratch =
             nn_query_scratch::InMemoryQueryScratch::new(&params_r);
         self.iterate_to_fixed_point(
@@ -667,15 +676,22 @@ where
             true,
         );
         let mut filtered: Vec<ann::Node> = Vec::with_capacity(k + 1);
+        let mapping = self.location_to_tag.read();
+
         scratch.best_l_nodes.data.iter().try_for_each(|nn| {
-            if filtered.len() > k {
+            if filtered.len() >= k {
                 return ControlFlow::Break(nn);
             }
-            if nn.vid != params_r.start && nn.distance != f32::MAX {
+            let eid;
+            match mapping.get(&nn.vid) {
+                Some(val) => eid = *val,
+                None => return ControlFlow::Continue(()),
+            }
+            if nn.vid != params_r.start && !(nn.distance.is_infinite() || nn.distance == f32::MAX) {
                 filtered.push(ann::Node {
                     vid: nn.vid,
                     distance: nn.distance,
-                    eid: [0u8; 16],
+                    eid: eid,
                 });
             }
             ControlFlow::Continue(())
@@ -944,6 +960,29 @@ where
             vids.len() == eids.len(),
             "could not get enough vids to map to the eid database",
         );
+        let data_processed;
+        let mut preprocess_scratch: Vec<f32>;
+
+        if TMetric::uses_preprocessor() {
+            let params_r = self.params.read();
+            preprocess_scratch = vec![0.0f32; data.len()];
+            for idx in 0..vids.len() {
+                let idx_s_fr = idx * params_r.aligned_dim;
+                let idx_e_fr = idx_s_fr + params_r.aligned_dim;
+                match TMetric::pre_process(&data[idx_s_fr..idx_e_fr]) {
+                    Some(vec) => {
+                        preprocess_scratch[idx_s_fr..idx_e_fr].copy_from_slice(&vec[0..vec.len()]);
+                    }
+                    None => {
+                        preprocess_scratch[idx_s_fr..idx_e_fr]
+                            .copy_from_slice(&data[idx_s_fr..idx_e_fr]);
+                    }
+                }
+            }
+            data_processed = &preprocess_scratch[0..preprocess_scratch.len()];
+        } else {
+            data_processed = data
+        }
         {
             // hold the lock and plop the data into our datastore - switching
             // to segments should allow us to not block _all_ readers during
@@ -957,7 +996,8 @@ where
                 // params copying from our supplied slice
                 let idx_s_fr = idx * params_r.aligned_dim;
                 let idx_e_fr = idx_s_fr + params_r.aligned_dim;
-                data_w.data[idx_s_to..idx_e_to].copy_from_slice(&data[idx_s_fr..idx_e_fr]);
+                data_w.data[idx_s_to..idx_e_to]
+                    .copy_from_slice(&data_processed[idx_s_fr..idx_e_fr]);
             }
         }
         {
@@ -1032,23 +1072,23 @@ where
                 }
             }
         }
-        let indexing_pool: rayon::ThreadPool;
-        match params_e.indexing_threads {
-            Some(cnt_threads) => {
-                match rayon::ThreadPoolBuilder::new()
-                    .num_threads(cnt_threads)
-                    .build()
-                {
-                    Ok(pool) => indexing_pool = pool,
-                    Err(_) => {
-                        bail!("unable to build the threading pool");
-                    }
-                }
-            }
-            None => {
-                bail!("params_e.indexing_threads unexpectedly is zero");
-            }
-        }
+        // let indexing_pool: rayon::ThreadPool;
+        // match params_e.indexing_threads {
+        //     Some(cnt_threads) => {
+        //         match rayon::ThreadPoolBuilder::new()
+        //             .num_threads(cnt_threads)
+        //             .build()
+        //         {
+        //             Ok(pool) => indexing_pool = pool,
+        //             Err(err) => {
+        //                 bail!("unable to build the threading pool {:?}", err);
+        //             }
+        //         }
+        //     }
+        //     None => {
+        //         bail!("params_e.indexing_threads unexpectedly is zero");
+        //     }
+        // }
 
         let paramsi: Arc<RwLock<DiskANNParamsInternal>> =
             Arc::new(RwLock::new(DiskANNParamsInternal {
@@ -1114,7 +1154,7 @@ where
             delete_set,
             empty_slots,
             metric: PhantomData,
-            indexing_pool: indexing_pool,
+            // indexing_pool: indexing_pool,
             s_scratch: s,
             r_scratch: r,
         };
