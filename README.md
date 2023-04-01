@@ -11,7 +11,7 @@ in order to build the wasm target, we need to do the following:
 3. demo will be available @ https://localhost:9000
 
 ## pushing the demo to cloudflare
-1. cd demo && wrangler pages publish dist --commit-dirty
+1. cd demo npm run build-one && wrangler pages publish dist --commit-dirty
 
 ## Resources
 [Faster Population Counts Using AVX2 Instructions](https://arxiv.org/pdf/1611.07612.pdf)

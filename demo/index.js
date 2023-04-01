@@ -265,7 +265,9 @@ const ImageLoader = ({ setDataSource }) => {
         let eids = [];
         let vecData = [];
         let totalTimeSpent = 0;
-        const batchSize = 25_000;
+        // chrome does *not* like a massive array of 100000 items!
+        // so let us batch things!
+        const batchSize = 50000;
         setIndexStatus((prevState) => ({ ...prevState, status: "INDEXING" }));
         for await (let line of makeTextFileLineIterator(file, opts)) {
             if (eidCnt >= MAX_NUM_OF_EMBEDDS) {
@@ -283,12 +285,12 @@ const ImageLoader = ({ setDataSource }) => {
                 var endTime = performance.now()
                 totalTimeSpent += endTime - startTime;
                 eidOffset += eids.length;
-                eidCnt = 0;
-                setIndexStatus((prevState) => ({ ...prevState, numIndexed: eidOffset }));
+                eidCnt = eidOffset;
                 eids = [];
                 vecData = [];
+                setIndexStatus((prevState) => ({ ...prevState, numIndexed: eidOffset }));
             }
-            eidCnt += 1 + eidOffset;
+            eidCnt += 1;
         }
         if (eids.length != 0) {
             var startTime = performance.now();
@@ -427,9 +429,9 @@ const ImageLoader = ({ setDataSource }) => {
             </div>
             <div style={{ "padding": "0.5rem", "background": "lightgrey", "margin": "0.5rem", "opacity": opacity }}>
                 <p><b>Step 2b:</b>[automatic] Build an Approximate Nearest Neighbor (ANN) index to make lookups snappy!</p>
-                <p>note: this takes around ~70s for 200k Images with parallelization == 4</p>
+                <p>note: this takes around ~70s for 150k Images with numThreads == 6</p>
                 <p>perf on M1 Macs is not great due to <a href="https://github.com/GoogleChromeLabs/wasm-bindgen-rayon/issues/16" target="_blank">wasm-bindgen-rayon:16</a>
-                    ...which rolls into this <a href="https://bugs.chromium.org/p/chromium/issues/detail?id=1228686&q=reporter%3Arreverser%40google.com&can=1" target="_blank">Chromium issue:1228686</a>.
+                    ...which rolls into <a href="https://bugs.chromium.org/p/chromium/issues/detail?id=1228686&q=reporter%3Arreverser%40google.com&can=1" target="_blank">chromium-issue:1228686</a>.
                     We recommend uploading a batch of demo images to play around with and apologize for the hassle.
                 </p>
                 {indexStatus.status == "INDEXING" && <>
@@ -497,8 +499,7 @@ const Searcher = ({ dataSource }) => {
     return (
         <>
             <div style={{ "padding": "0.5rem", "background": "lightgrey", "margin": "0.5rem", "opacity": opacity }}>
-                <p><b>Step 3:</b> Enter a search term</p>
-
+                <p><b>Step 3:</b> Enter a search term, we will yield the nearest 50 results</p>
                 <div>
                     <div style={{ "display": "inline-block", "paddingRight": "0.5rem" }}>
                         <input onChange={(e) => setQuery(e.target.value)} value={query} ></input>
