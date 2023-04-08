@@ -18,7 +18,9 @@ export function downloadBlobWithProgress(url, onProgress) {
 // in memory to do so and since we are _already_ running the index. we will rely
 // on people to be reasonable (famous last words)
 export function cosineSimilarity(A, B) {
-    if (A.length !== B.length) throw new Error("A.length !== B.length");
+    if (A.length !== B.length) {
+        throw new Error(`A.length (${A.length}) !== B.length (${B.length})`);
+    }
     let dotProduct = 0, mA = 0, mB = 0;
     for (let i = 0; i < A.length; i++) {
         dotProduct += A[i] * B[i];

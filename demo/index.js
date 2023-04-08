@@ -236,6 +236,7 @@ const ModelLoader = () => {
 
 const ImageLoader = ({ setDataSource }) => {
     const [selection, setSelection] = React.useState(undefined);
+    const [nsfwFilter, setNSFWFilter] = React.useState(false);
     const [embeddStatus, setEmbeddStatus] = React.useState({ imagesEmbedded: 0, totalEmbeddingsCount: 0, imagesBeingProcessedNow: 0 });
     const [indexStatus, setIndexStatus] = React.useState({ timeTaken: "-", status: undefined, numIndexed: "-" });
     const [loaded, setLoaded] = React.useState(false);
@@ -269,15 +270,26 @@ const ImageLoader = ({ setDataSource }) => {
         // so let us batch things!
         const batchSize = 50000;
         setIndexStatus((prevState) => ({ ...prevState, status: "INDEXING" }));
+        console.log(`[anansi]: NSFWFilter: ${nsfwFilter}`);
+        let nsfwTextEmbedding = await modelData[MODEL_NAME].text.embed(window.atob('cG9ybiBuYWtlZCBwZW5pcyB2YWdpbmEgbnVkZSBzZXggZGljayBwdXNzeSBzZXh1YWwgcG9ybm9ncmFwaGljIGFzcyBib29icw=='), onnxTextSession); // nsfw words (hidden with `btoa`)
         for await (let line of makeTextFileLineIterator(file, opts)) {
             if (eidCnt >= MAX_NUM_OF_EMBEDDS) {
                 break
             }
             if (!line || !line.trim()) continue;
             let [filePath, embeddingVec] = line.split("\t");
+            let embeddingVecDecoded = [];
+            try {
+                embeddingVecDecoded = JSON.parse(embeddingVec);
+            } catch (e) {
+                continue
+            }
+            if (nsfwFilter && (cosineSimilarity(embeddingVecDecoded, nsfwTextEmbedding) > 0.2093)) {
+                continue
+            }
             path_by_eid[eidCnt.toString()] = filePath;
             eids.push(eidCnt.toString());
-            vecData.push(...JSON.parse(embeddingVec));
+            vecData.push(...embeddingVecDecoded);
             // we index in bathces since chrome doesn't like the massive arrays!
             if (eids.length >= batchSize) {
                 var startTime = performance.now();
@@ -403,15 +415,22 @@ const ImageLoader = ({ setDataSource }) => {
             setDataSource("DIRECTORY");
         }
     }
-
     return (
         <>
             <div style={{ "padding": "0.5rem", "background": "lightgrey", "margin": "0.5rem", "opacity": opacity }}>
-                <p><b>Step 2a:</b> Pick a directory of images to use or default to ~150k Reddit Images.</p>
-                <p><b><i>If you select a directory, no images you use will leave your device - <a href="https://github.com/infrawhispers/anansi/tree/main/demo">code is here</a> [feel free to run it yourself! :)]</i></b></p>
-                <button disabeld={loaded} onClick={() => { handleSelection("REDDIT") }}>Use Reddit Images</button>
-                <span style={{ "paddingRight": "0.5rem" }}></span>
+                <p><b>Step 2a:</b> Pick a directory of images or ~150k images from Reddit to search.</p>
+                <ul>
+                    <li>If you select a directory, <b><i>no images you use will leave your device</i></b> - <a href="https://github.com/infrawhispers/anansi/tree/main/demo">code is here</a>, feel free to run it yourself!</li>
+                    <li>NSFW filtering happens in JS land at the moment, slowing things down. ANN + Vector Filtering is WIP.</li>
+                </ul>
                 <button disabled={loaded} onClick={() => { handleSelection("DIRECTORY") }}>Use Directory Images </button>
+                <span style={{ "paddingRight": "0.5rem" }}></span>
+                <button disabeld={loaded} onClick={() => { handleSelection("REDDIT") }}>Use Reddit Images</button>
+                <label style={{ "paddingRight": "0.5rem" }}>
+                    <input type="checkbox" checked={!!nsfwFilter} onChange={(event) => { setNSFWFilter(event.currentTarget.checked) }}></input>
+                    Filter NSFW Images
+                </label>
+
                 {selection === "REDDIT" &&
                     <>
                         <br />
@@ -432,7 +451,7 @@ const ImageLoader = ({ setDataSource }) => {
                 <p>note: this takes around ~70s for 150k Images with numThreads == 6</p>
                 <p>perf on M1 Macs is not great due to <a href="https://github.com/GoogleChromeLabs/wasm-bindgen-rayon/issues/16" target="_blank">wasm-bindgen-rayon:16</a>
                     ...which rolls into <a href="https://bugs.chromium.org/p/chromium/issues/detail?id=1228686&q=reporter%3Arreverser%40google.com&can=1" target="_blank">chromium-issue:1228686</a>.
-                    We recommend uploading a batch of demo images to play around with and apologize for the hassle.
+                    We highly recommend uploading a batch of demo images to play around with and apologize for the hassle.
                 </p>
                 {indexStatus.status == "INDEXING" && <>
                     <p>Currently Indexing...Num Indexed: {indexStatus.numIndexed}</p><div className='loader'></div>
@@ -502,7 +521,11 @@ const Searcher = ({ dataSource }) => {
                 <p><b>Step 3:</b> Enter a search term, we will yield the nearest 50 results</p>
                 <div>
                     <div style={{ "display": "inline-block", "paddingRight": "0.5rem" }}>
-                        <input onChange={(e) => setQuery(e.target.value)} value={query} ></input>
+                        <input onChange={(e) => setQuery(e.target.value)} value={query} onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                                issueSearch()
+                            }
+                        }} ></input>
                     </div>
                     <div style={{ "display": "inline-block" }}>
                         <button disabled={!show} onClick={() => { issueSearch() }}>Search</button>
@@ -520,16 +543,19 @@ const App = () => {
     const [dataSource, setDataSource] = React.useState("");
     return (<div>
         <h1 style={{ "font-size": "1rem" }}>CLIP Image + ANN Search In Your Browser!</h1>
+        <p>Quick video demo of searching is <a href="https://loom.com/share/716952548653485ea389755f63ae37a4">here</a></p>
         <p>This small demo allows you to search a batch of images using <a href="https://openai.com/research/clip"
             target="_blank">OpenAI's CLIP model</a> via the <a href="https://onnxruntime.ai/docs/tutorials/web/"
-                target="_blank">ONXX</a> runtime.
+                target="_blank">ONXX</a> runtime. It requires a modern <b>desktop browser</b> (Chrome, Brave) - Firefox support for the Reddit import is pending given our use of <a
+                    href="https://developer.mozilla.org/en-US/docs/Web/API/DecompressionStream"
+                    target="_blank"
+                >DecompressionStream</a>.
         </p>
-        <p>Model translation and embeddings generation was pulled from <a
+        <p> Model weights and onnx runtime usage was pulled from <a
             href="https://github.com/josephrocca/clip-image-sorter" target="_blank">clip-image-sorter</a>.
             We have added an implementation of DiskANN (in Rust, compiles down to WASM) <a
                 href="https://github.com/infrawhispers/anansi" target="_blank">here</a>, which allows us to speed up the
-            search speed of
-            the nearest neighbors.</p>
+            search of the nearest neighbors.</p>
         <ModelLoader />
         <ImageLoader setDataSource={setDataSource} />
         <Searcher dataSource={dataSource} />
