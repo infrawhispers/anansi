@@ -10,6 +10,7 @@ dependencies = [
  "crossbeam-channel",
  "log",
  "math",
+ "num 0.4.0",
  "parking_lot",
  "rayon",
  "roaring",

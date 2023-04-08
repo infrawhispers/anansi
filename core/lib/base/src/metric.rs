@@ -213,13 +213,16 @@ mod tests {
             27f32, 28f32,
         ];
         let vec1_normalized =
-            Cosine::pre_process(&vec1).expect("recieved None while normalizing non unit vec");
+            MetricCosine::pre_process(&vec1).expect("recieved None while normalizing non unit vec");
         let vec2_normalized =
-            Cosine::pre_process(&vec2).expect("recieved None while normalizing non unit vec");
-        assert_eq!(0.0, Cosine::compare(&vec1_normalized, &vec1_normalized));
+            MetricCosine::pre_process(&vec2).expect("recieved None while normalizing non unit vec");
+        assert_eq!(
+            0.0,
+            MetricCosine::compare(&vec1_normalized, &vec1_normalized)
+        );
         assert_eq!(
             0.047009885,
-            Cosine::compare(&vec1_normalized, &vec2_normalized)
+            MetricCosine::compare(&vec1_normalized, &vec2_normalized)
         );
     }
 }

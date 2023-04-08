@@ -1,12 +1,12 @@
 use anyhow::bail;
 use parking_lot::RwLock;
 use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::default::Default;
 use std::marker::PhantomData;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use super::av_store;
-use super::errors;
 use crate::ann;
 use crate::ann::EId;
 use crate::metric;
@@ -19,10 +19,10 @@ pub struct FlatParams {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct FlatIndex<TMetric: metric::Metric<f32>> {
+pub struct FlatIndex<TMetric, TVal: ann::ElementVal> {
     pub metric: PhantomData<TMetric>,
     pub(crate) params: Arc<FlatParams>,
-    datastore: Arc<RwLock<HashMap<usize, RwLock<av_store::AlignedDataStore>>>>,
+    datastore: Arc<RwLock<HashMap<usize, RwLock<av_store::AlignedDataStore<TVal>>>>>,
     id_increment: Arc<AtomicUsize>,
     delete_set: Arc<RwLock<HashSet<usize>>>,
     eid_to_vid: Arc<RwLock<HashMap<EId, usize>>>,
@@ -31,11 +31,13 @@ pub struct FlatIndex<TMetric: metric::Metric<f32>> {
     aligned_dim: usize,
 }
 
-impl<TMetric> ann::ANNIndex for FlatIndex<TMetric>
+impl<TMetric, TVal> ann::ANNIndex for FlatIndex<TMetric, TVal>
 where
-    TMetric: metric::Metric<f32>,
+    TVal: ann::ElementVal,
+    TMetric: metric::Metric<TVal>,
 {
-    fn new(params: &ann::ANNParams) -> anyhow::Result<FlatIndex<TMetric>> {
+    type Val = TVal;
+    fn new(params: &ann::ANNParams) -> anyhow::Result<FlatIndex<TMetric, TVal>> {
         let flat_params: &FlatParams = match params {
             ann::ANNParams::Flat { params } => params,
             _ => {
@@ -44,30 +46,8 @@ where
         };
         FlatIndex::new(flat_params)
     }
-    fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-        if (data.len() % eids.len()) != 0 {
-            return Err(Box::new(errors::ANNError::GenericError {
-                message: format!(
-                    "data is not an exact multiple of eids - data_len: {} | eids_len: {}",
-                    eids.len(),
-                    data.len(),
-                )
-                .into(),
-            }));
-        }
-        let data_len = data.len() / eids.len();
-        for (idx, eid) in eids.iter().enumerate() {
-            match self.insert(*eid, &data[idx * data_len..idx * data_len + data_len]) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(err.into());
-                }
-            }
-        }
-        Ok(())
-    }
 
-    fn insert(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
+    fn insert(&self, eids: &[EId], data: &[TVal]) -> anyhow::Result<()> {
         if (data.len() % eids.len()) != 0 {
             bail!(
                 "data is not an exact multiple of eids - data_len: {} | eids_len: {}",
@@ -90,7 +70,7 @@ where
         self.delete(eids)
     }
 
-    fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<ann::Node>> {
+    fn search(&self, q: &[Self::Val], k: usize) -> anyhow::Result<Vec<ann::Node>> {
         self.search(q, k)
     }
 
@@ -99,11 +79,12 @@ where
     }
 }
 
-impl<TMetric> FlatIndex<TMetric>
+impl<TMetric, TVal> FlatIndex<TMetric, TVal>
 where
-    TMetric: metric::Metric<f32>,
+    TVal: ann::ElementVal,
+    TMetric: metric::Metric<TVal>,
 {
-    pub fn new(params: &FlatParams) -> anyhow::Result<FlatIndex<TMetric>> {
+    pub fn new(params: &FlatParams) -> anyhow::Result<FlatIndex<TMetric, TVal>> {
         let aligned_dim = ann::round_up(params.dim as u32) as usize;
         let mut v_per_segment: usize = (params.segment_size_kb * 1000) / (aligned_dim as usize * 4);
         if v_per_segment < 1000 {
@@ -136,7 +117,7 @@ where
             aligned_dim: aligned_dim,
         })
     }
-    pub fn insert(&self, eid: ann::EId, point: &[f32]) -> anyhow::Result<()> {
+    pub fn insert(&self, eid: ann::EId, point: &[TVal]) -> anyhow::Result<()> {
         if point.len() > self.aligned_dim {
             bail!(
                 "point dim: {} > aligned_dim: {}",
@@ -144,10 +125,10 @@ where
                 self.aligned_dim
             );
         }
-        let mut padded_point: &[f32] = point;
-        let mut data: Vec<f32>;
+        let mut padded_point: &[TVal] = point;
+        let mut data: Vec<TVal>;
         if point.len() < self.aligned_dim {
-            data = vec![0.0; self.aligned_dim];
+            data = vec![Default::default(); self.aligned_dim];
             data[0..point.len()].copy_from_slice(point);
             padded_point = &data[..]
         }
@@ -219,13 +200,14 @@ where
 
         Ok(())
     }
-    pub fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<ann::Node>> {
+    pub fn search(&self, q: &[TVal], k: usize) -> anyhow::Result<Vec<ann::Node>> {
         if q.len() > self.aligned_dim {
             bail!("query dim: {} > aligned_dim: {}", q.len(), self.aligned_dim);
         }
         // maybe we want to keep around a bunch of these in a pool we can pull from?
         let mut res_heap: BinaryHeap<ann::Node> = BinaryHeap::with_capacity(k + 1);
-        let mut q_aligned = av_store::AlignedDataStore::new(1, self.aligned_dim);
+        let mut q_aligned: av_store::AlignedDataStore<TVal> =
+            av_store::AlignedDataStore::<TVal>::new(1, self.aligned_dim);
         q_aligned.data[..q.len()].copy_from_slice(&q[..]);
         // we should probably use rayon over segments and have multiple vectors
         // in a given segment
@@ -245,8 +227,8 @@ where
                         }
                     }
 
-                    let arr_a: &[f32] = &q_aligned.data[..];
-                    let arr_b: &[f32] =
+                    let arr_a: &[TVal] = &q_aligned.data[..];
+                    let arr_b: &[TVal] =
                         &data.data[i * self.aligned_dim..(i * self.aligned_dim) + self.aligned_dim];
                     let dist = TMetric::compare(arr_a, arr_b);
 
@@ -279,7 +261,7 @@ mod tests {
             dim: 128,
             segment_size_kb: 512,
         };
-        let index = FlatIndex::<metric::MetricL2>::new(&params).unwrap();
+        let index = FlatIndex::<metric::MetricL2, f32>::new(&params).unwrap();
         // insert the first 1000 vectors into the index (nb: 1000 per segment)
         for i in 0..1000 {
             let mut id = [0u8; 16];
@@ -328,7 +310,7 @@ mod tests {
             dim: 31,
             segment_size_kb: 512,
         };
-        let index = FlatIndex::<metric::MetricL2>::new(&params).unwrap();
+        let index = FlatIndex::<metric::MetricL2, f32>::new(&params).unwrap();
         for i in 0..10 {
             let mut id = [0u8; 16];
             id[0] = i;
@@ -377,7 +359,7 @@ mod tests {
             dim: 31,
             segment_size_kb: 512,
         };
-        let index = FlatIndex::<metric::MetricL2>::new(&params).unwrap();
+        let index = FlatIndex::<metric::MetricL2, f32>::new(&params).unwrap();
         for i in 0..10 {
             let mut id = [0u8; 16];
             id[0] = i;
@@ -408,7 +390,7 @@ mod tests {
             dim: 128,
             segment_size_kb: 512,
         };
-        let index = FlatIndex::<metric::MetricL2>::new(&params).unwrap();
+        let index = FlatIndex::<metric::MetricL2, f32>::new(&params).unwrap();
         for i in 0..10 {
             let mut id = [0u8; 16];
             id[0] = i;

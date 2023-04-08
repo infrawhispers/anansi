@@ -1,3 +1,4 @@
+use num::Num;
 use std::mem;
 
 #[derive(Clone)]
@@ -5,13 +6,13 @@ use std::mem;
 pub struct AlignToThirtyTwo([u8; 32]);
 
 #[derive(Debug)]
-pub struct AlignedDataStore {
-    pub data: Vec<f32>,
+pub struct AlignedDataStore<T> {
+    pub data: Vec<T>,
     pub num_vectors: usize,
 }
 
-impl AlignedDataStore {
-    unsafe fn aligned_vec(n_bytes: usize) -> Vec<f32> {
+impl<T: Num + std::marker::Copy> AlignedDataStore<T> {
+    unsafe fn aligned_vec(n_bytes: usize) -> Vec<T> {
         // Lazy math to ensure we always have enough.
         let n_units = (n_bytes / mem::size_of::<AlignToThirtyTwo>()) + 1;
         let mut aligned: Vec<AlignToThirtyTwo> = vec![AlignToThirtyTwo([0u8; 32]); n_units]; //Vec::with_capacity(n_units);
@@ -20,28 +21,28 @@ impl AlignedDataStore {
         let cap_units = aligned.capacity();
         mem::forget(aligned);
         Vec::from_raw_parts(
-            ptr as *mut f32,
+            ptr as *mut T,
             len_units * mem::size_of::<AlignToThirtyTwo>(),
             cap_units * mem::size_of::<AlignToThirtyTwo>(),
         )
     }
-    pub fn aligned_insert(&mut self, id: usize, data: &[f32]) {
+    pub fn aligned_insert(&mut self, id: usize, data: &[T]) {
         let ptr = self.data.as_ptr();
         unsafe {
             let insert_loc = ptr.add(id * data.len()) as *mut _;
-            let write_loc: &mut [f32] = std::slice::from_raw_parts_mut(insert_loc, data.len());
+            let write_loc: &mut [T] = std::slice::from_raw_parts_mut(insert_loc, data.len());
             write_loc.copy_from_slice(&data[..]);
             if id >= self.num_vectors {
                 self.num_vectors += 1
             }
         }
     }
-    pub fn new(total_internal_points: usize, aligned_dim: usize) -> AlignedDataStore {
-        let mut data_vec;
+    pub fn new(total_internal_points: usize, aligned_dim: usize) -> AlignedDataStore<T> {
+        let mut data_vec: Vec<T>;
         unsafe {
             // we store floats so we always multiple by 4
             // TODO(infrawhispers) - make this configurable if we end up using ints
-            data_vec = AlignedDataStore::aligned_vec(total_internal_points * aligned_dim * 4);
+            data_vec = AlignedDataStore::<T>::aligned_vec(total_internal_points * aligned_dim * 4);
             data_vec.set_len(total_internal_points * aligned_dim);
         }
         return AlignedDataStore {

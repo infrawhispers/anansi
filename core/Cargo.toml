@@ -10,6 +10,7 @@ base = { path = "lib/base" }
 crossbeam-channel = "0.5.7"
 log = "0.4.17"
 math = "0.10.0"
+num = "0.4.0"
 parking_lot = { version = "0.12.1", features = ["nightly"] }
 rayon = "1.6.1"
 roaring = "0.10.1"

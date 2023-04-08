@@ -8,7 +8,7 @@ use roaring::RoaringTreemap;
 use std::collections::HashSet;
 
 pub struct InMemoryQueryScratch {
-    pub q_aligned: AlignedDataStore,
+    pub q_aligned: AlignedDataStore<f32>,
     pub occlude_factor: Vec<f32>,
     pub inserted_into_pool_rb: RoaringTreemap,
     pub inserted_into_pool_hs: HashSet<usize>,

@@ -51,7 +51,7 @@ pub struct DiskANNV1Index<TMetric: metric::Metric<f32>> {
     params: Arc<RwLock<DiskANNParamsInternal>>,
     metric: PhantomData<TMetric>,
 
-    data: Arc<RwLock<av_store::AlignedDataStore>>,
+    data: Arc<RwLock<av_store::AlignedDataStore<f32>>>,
     in_graph: Arc<Vec<RwLock<HashSet<usize>>>>, // all vids going *into* the node: vid -> {vid_1, vid_2, ..}
     final_graph: Arc<Vec<RwLock<Vec<usize>>>>, // all vids that are closest: vid -> [vid_1, vid_2...]
     location_to_tag: Arc<RwLock<HashMap<usize, EId>>>,
@@ -77,6 +77,7 @@ impl<TMetric> ann::ANNIndex for DiskANNV1Index<TMetric>
 where
     TMetric: metric::Metric<f32>,
 {
+    type Val = f32;
     fn new(params: &ann::ANNParams) -> anyhow::Result<DiskANNV1Index<TMetric>> {
         let diskann_params: &DiskANNParams = match params {
             ann::ANNParams::Flat { params: _ } => {
@@ -85,9 +86,6 @@ where
             ann::ANNParams::DiskANN { params } => params,
         };
         DiskANNV1Index::new(diskann_params)
-    }
-    fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
-        self.batch_insert(eids, data)
     }
     fn insert(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
         self.insert(eids, data)
@@ -138,7 +136,7 @@ where
     fn calculate_entry_point(
         &self,
         paramsr: &DiskANNParamsInternal,
-        data: &AlignedDataStore,
+        data: &AlignedDataStore<f32>,
     ) -> usize {
         // let paramsr = self.params.read();
         // let data = self.data.read();
@@ -176,6 +174,7 @@ where
         return min_idx;
     }
 
+    #[allow(dead_code)]
     fn generate_frozen_point(&self) {
         let params_r = self.params.read();
         let mut data_w = self.data.write();
@@ -427,7 +426,7 @@ where
         maxc: usize,
         result: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
-        data: &AlignedDataStore,
+        data: &AlignedDataStore<f32>,
     ) {
         if pool.len() == 0 {
             return;
@@ -487,7 +486,7 @@ where
         pruned_list: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
         scratch: &mut nn_query_scratch::InMemoryQueryScratch,
-        data: &AlignedDataStore,
+        data: &AlignedDataStore<f32>,
     ) {
         let pool = &mut scratch.pool;
         if pool.len() == 0 {
@@ -528,7 +527,7 @@ where
         pruned_list: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
         scratch: &mut nn_query_scratch::InMemoryQueryScratch,
-        data: &AlignedDataStore,
+        data: &AlignedDataStore<f32>,
     ) {
         debug_assert!(!pruned_list.is_empty(), "inter_insert:: vid: {:?}", vid);
         let range = params_r.params_e.indexing_range;
@@ -649,12 +648,11 @@ where
 
     fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<ann::Node>> {
         let mut init_ids: Vec<usize> = Vec::new();
-        let mut q_aligned;
         let params_r = self.params.read();
         if init_ids.len() == 0 {
             init_ids.push(params_r.start);
         }
-        q_aligned = AlignedDataStore::new(params_r.aligned_dim, 1);
+        let mut q_aligned: AlignedDataStore<f32> = AlignedDataStore::new(params_r.aligned_dim, 1);
         q_aligned.data[0..q.len()].clone_from_slice(q);
         if TMetric::uses_preprocessor() {
             match TMetric::pre_process(&q_aligned.data[0..q_aligned.data.len()]) {
@@ -699,6 +697,7 @@ where
         Ok(filtered)
     }
 
+    #[allow(dead_code)]
     fn build(&self) {
         let mut visit_order: Vec<usize>;
         {
@@ -847,7 +846,7 @@ where
         vid: usize,
         delete_set: &HashSet<usize>,
         params_r: &DiskANNParamsInternal,
-        data: &AlignedDataStore,
+        data: &AlignedDataStore<f32>,
     ) {
         // TODO(infrawhispers) - what should this be set as?
         let mut expanded_nodes_set: Vec<usize> = Vec::with_capacity(10);
@@ -1013,6 +1012,7 @@ where
         self.link(vids, false);
         Ok(())
     }
+    #[allow(dead_code)]
     fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
         {
             // verify that we have the correct arguments
@@ -1122,7 +1122,7 @@ where
         let tag_to_location: Arc<RwLock<HashMap<EId, usize>>> =
             Arc::new(RwLock::new(HashMap::new()));
 
-        let data: Arc<RwLock<AlignedDataStore>>;
+        let data: Arc<RwLock<AlignedDataStore<f32>>>;
 
         {
             let params = paramsi.read();

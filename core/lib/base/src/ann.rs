@@ -1,6 +1,6 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::default::Default;
 
 use crate::diskannv1::DiskANNParams;
 use crate::flat::FlatParams;
@@ -27,16 +27,21 @@ pub trait IntoCopied {
     }
 }
 
+// we support f32s and u8s
+pub trait ElementVal: num::Num + std::marker::Copy + std::default::Default {}
+impl ElementVal for f32 {}
+impl ElementVal for u8 {}
+
 // primary trait that enables an obj to act as an ANNIndex - this
 // allows us to use multiple different backends in the future.
-pub trait ANNIndex: Send + Sync {
+pub trait ANNIndex {
+    type Val;
     fn new(params: &ANNParams) -> anyhow::Result<Self>
     where
         Self: Sized;
-    fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>>;
-    fn insert(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()>;
+    fn insert(&self, eids: &[EId], data: &[Self::Val]) -> anyhow::Result<()>;
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()>;
-    fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<Node>>;
+    fn search(&self, q: &[Self::Val], k: usize) -> anyhow::Result<Vec<Node>>;
     fn save(&self) -> anyhow::Result<()>;
 }
 

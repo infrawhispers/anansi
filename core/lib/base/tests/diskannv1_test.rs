@@ -6,7 +6,6 @@ use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 use base::ann;
 use base::ann::ANNIndex;
@@ -157,7 +156,7 @@ mod test {
             maintain_arc.maintain();
         });
         assert!(
-            ann_idx.batch_insert(&eids, &base_vectors).is_ok(),
+            ann_idx.insert(&eids, &base_vectors).is_ok(),
             "unexpexted err on batch_insert to the vector store"
         );
         for i in 0..10 {
@@ -258,7 +257,7 @@ mod test {
         });
 
         assert!(
-            ann_idx.batch_insert(&eids, &base_vectors).is_ok(),
+            ann_idx.insert(&eids, &base_vectors).is_ok(),
             "unexpexted err on batch_insert to the vector store"
         );
         let mut total_intersection_count: usize = 0;
