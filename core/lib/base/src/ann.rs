@@ -4,6 +4,7 @@ use std::default::Default;
 
 use crate::diskannv1::DiskANNParams;
 use crate::flat::FlatParams;
+use num::traits::NumAssign;
 
 #[derive(Debug)]
 pub enum ANNParams {
@@ -28,9 +29,29 @@ pub trait IntoCopied {
 }
 
 // we support f32s and u8s
-pub trait ElementVal: num::Num + std::marker::Copy + std::default::Default {}
-impl ElementVal for f32 {}
-impl ElementVal for u8 {}
+pub trait ElementVal:
+    num::Num
+    + std::marker::Copy
+    + std::default::Default
+    + std::marker::Sync
+    + std::marker::Send
+    + NumAssign
+    + std::ops::AddAssign
+    + num::ToPrimitive
+    + num::FromPrimitive
+{
+    type Native;
+}
+impl ElementVal for f32 {
+    type Native = f32;
+}
+impl ElementVal for f64 {
+    type Native = f64;
+}
+
+impl ElementVal for u8 {
+    type Native = u8;
+}
 
 // primary trait that enables an obj to act as an ANNIndex - this
 // allows us to use multiple different backends in the future.

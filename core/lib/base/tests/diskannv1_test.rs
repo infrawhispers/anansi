@@ -149,7 +149,7 @@ mod test {
                 maintenance_period_millis: 500,
             },
         };
-        let ann_idx: Arc<diskannv1::DiskANNV1Index<metric::MetricL2>> =
+        let ann_idx: Arc<diskannv1::DiskANNV1Index<metric::MetricL2, f32>> =
             Arc::new(ann::ANNIndex::new(&params).expect("error creating diskannv1 index"));
         let maintain_arc = ann_idx.clone();
         let _t = std::thread::spawn(move || {
@@ -249,7 +249,7 @@ mod test {
                 maintenance_period_millis: 500,
             },
         };
-        let ann_idx: Arc<diskannv1::DiskANNV1Index<metric::MetricL2>> =
+        let ann_idx: Arc<diskannv1::DiskANNV1Index<metric::MetricL2, f32>> =
             Arc::new(ann::ANNIndex::new(&params).expect("error creating diskannv1 index"));
         let _t_ann_idx = ann_idx.clone();
         let _t = std::thread::spawn(move || {

@@ -47,11 +47,11 @@ pub struct DiskANNParamsInternal {
 }
 
 #[allow(dead_code)]
-pub struct DiskANNV1Index<TMetric: metric::Metric<f32>> {
+pub struct DiskANNV1Index<TMetric, TVal: ann::ElementVal> {
     params: Arc<RwLock<DiskANNParamsInternal>>,
     metric: PhantomData<TMetric>,
 
-    data: Arc<RwLock<av_store::AlignedDataStore<f32>>>,
+    data: Arc<RwLock<av_store::AlignedDataStore<TVal>>>,
     in_graph: Arc<Vec<RwLock<HashSet<usize>>>>, // all vids going *into* the node: vid -> {vid_1, vid_2, ..}
     final_graph: Arc<Vec<RwLock<Vec<usize>>>>, // all vids that are closest: vid -> [vid_1, vid_2...]
     location_to_tag: Arc<RwLock<HashMap<usize, EId>>>,
@@ -68,17 +68,18 @@ pub struct DiskANNV1Index<TMetric: metric::Metric<f32>> {
 
 const GRAPH_SLACK_FACTOR: f64 = 1.3;
 const MAX_POINTS_FOR_USING_BITSET: usize = 10_000_000;
-enum QueryTarget<'a> {
+enum QueryTarget<'a, TVal: ann::ElementVal> {
     VId(usize),
-    Vector(&'a [f32]),
+    Vector(&'a [TVal]),
 }
 
-impl<TMetric> ann::ANNIndex for DiskANNV1Index<TMetric>
+impl<TMetric, TVal> ann::ANNIndex for DiskANNV1Index<TMetric, TVal>
 where
-    TMetric: metric::Metric<f32>,
+    TVal: ann::ElementVal,
+    TMetric: metric::Metric<TVal>,
 {
-    type Val = f32;
-    fn new(params: &ann::ANNParams) -> anyhow::Result<DiskANNV1Index<TMetric>> {
+    type Val = TVal;
+    fn new(params: &ann::ANNParams) -> anyhow::Result<DiskANNV1Index<TMetric, TVal>> {
         let diskann_params: &DiskANNParams = match params {
             ann::ANNParams::Flat { params: _ } => {
                 unreachable!("incorrect params passed for construction")
@@ -87,13 +88,13 @@ where
         };
         DiskANNV1Index::new(diskann_params)
     }
-    fn insert(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
+    fn insert(&self, eids: &[EId], data: &[TVal]) -> anyhow::Result<()> {
         self.insert(eids, data)
     }
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()> {
         self.delete(eids)
     }
-    fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<ann::Node>> {
+    fn search(&self, q: &[TVal], k: usize) -> anyhow::Result<Vec<ann::Node>> {
         self.search(q, k)
     }
     fn save(&self) -> anyhow::Result<()> {
@@ -101,9 +102,10 @@ where
     }
 }
 
-impl<TMetric> DiskANNV1Index<TMetric>
+impl<TMetric, TVal> DiskANNV1Index<TMetric, TVal>
 where
-    TMetric: metric::Metric<f32>,
+    TVal: ann::ElementVal,
+    TMetric: metric::Metric<TVal>,
 {
     fn set_start_point_at_random(&self, radius: f32) {
         let params_r = self.params.read();
@@ -122,36 +124,38 @@ where
             })
             .collect();
         let norm: f64 = f64::sqrt(norm_sq);
-        let start_vec: Vec<f32> = real_vec
+        let start_vec: Vec<TVal> = real_vec
             .iter()
-            .map(|p| (*p * (radius as f64) / norm) as f32)
+            .map(|p| {
+                TVal::from_f64(*p * (radius as f64) / norm).expect("unexpected cast issue fr: f32")
+            })
             .collect();
-
         // copy the data into our vector!
         let mut data_w = self.data.write();
         let idx_s: usize = params_r.start * params_r.aligned_dim;
         let idx_e: usize = idx_s + params_r.aligned_dim;
         data_w.data[idx_s..idx_e].copy_from_slice(&start_vec[..]);
     }
+
     fn calculate_entry_point(
         &self,
         paramsr: &DiskANNParamsInternal,
-        data: &AlignedDataStore<f32>,
+        data: &AlignedDataStore<TVal>,
     ) -> usize {
         // let paramsr = self.params.read();
         // let data = self.data.read();
 
         let aligned_dim: usize = paramsr.aligned_dim;
         let nd: usize = paramsr.nd;
-        let mut center: Vec<f32> = vec![0.0; aligned_dim];
+        let mut center: Vec<TVal> = vec![Default::default(); aligned_dim];
         for i in 0..nd {
             for j in 0..aligned_dim {
                 center[j] += data.data[i * aligned_dim + j];
             }
         }
-        for j in 0..aligned_dim {
-            center[j] /= nd as f32;
-        }
+        // for j in 0..aligned_dim {
+        //     center[j] /= nd as TVal;
+        // }
         let mut distances: Vec<f32> = vec![0.0; nd];
         distances.par_iter_mut().enumerate().for_each(|(i, x)| {
             let s_idx: usize = i * aligned_dim;
@@ -159,7 +163,9 @@ where
             let vec_t = &data.data[s_idx..e_idx];
             let mut dist: f32 = 0.0;
             for j in 0..aligned_dim {
-                dist += (center[j] - vec_t[j]).powf(2.0)
+                dist += ((center[j] - vec_t[j]) * (center[j] - vec_t[j]))
+                    .to_f32()
+                    .expect("hello");
             }
             *x = dist
         });
@@ -247,9 +253,9 @@ where
                 let mut new_out_neighbors: Vec<usize> = Vec::new();
                 graph_copy.iter().for_each(|nbr_vid| {
                     if !dummy_visited.contains(nbr_vid) && *nbr_vid != *curr_vid {
-                        let arr_a: &[f32] = &data.data[*curr_vid * params_r.aligned_dim
+                        let arr_a: &[TVal] = &data.data[*curr_vid * params_r.aligned_dim
                             ..(*curr_vid * params_r.aligned_dim) + params_r.aligned_dim];
-                        let arr_b: &[f32] = &data.data[nbr_vid * params_r.aligned_dim
+                        let arr_b: &[TVal] = &data.data[nbr_vid * params_r.aligned_dim
                             ..(nbr_vid * params_r.aligned_dim) + params_r.aligned_dim];
                         dummy_pool.push(ann::INode {
                             vid: *nbr_vid,
@@ -295,7 +301,7 @@ where
 
     fn iterate_to_fixed_point(
         &self,
-        target: QueryTarget,
+        target: QueryTarget<TVal>,
         params_r: &DiskANNParamsInternal,
         init_ids: &mut Vec<usize>,
         scratch: &mut nn_query_scratch::InMemoryQueryScratch,
@@ -304,7 +310,7 @@ where
     ) -> (usize, usize) {
         let data = self.data.read();
         // pull out the slice we are comparing against
-        let arr_b: &[f32];
+        let arr_b: &[TVal];
         match target {
             QueryTarget::VId(vid) => {
                 arr_b = &data.data
@@ -344,7 +350,7 @@ where
                 } else {
                     inserted_into_pool_hs.insert(*nn_id);
                 }
-                let arr_a: &[f32] = &data.data[*nn_id * params_r.aligned_dim
+                let arr_a: &[TVal] = &data.data[*nn_id * params_r.aligned_dim
                     ..(*nn_id * params_r.aligned_dim) + params_r.aligned_dim];
                 let nn = ann::INode {
                     vid: *nn_id,
@@ -400,7 +406,7 @@ where
                 // if i + 1 < id_scratch.len() {
                 // // TODO(infrawhispers) there is some pre-fetch funny biz that happens in the original implementation
                 // }
-                let arr_a: &[f32] = &data.data[*nn * params_r.aligned_dim
+                let arr_a: &[TVal] = &data.data[*nn * params_r.aligned_dim
                     ..(*nn * params_r.aligned_dim) + params_r.aligned_dim];
                 let dist: f32 = TMetric::compare(arr_a, arr_b);
                 nbrs_potential.push(ann::INode {
@@ -426,7 +432,7 @@ where
         maxc: usize,
         result: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
-        data: &AlignedDataStore<f32>,
+        data: &AlignedDataStore<TVal>,
     ) {
         if pool.len() == 0 {
             return;
@@ -464,9 +470,9 @@ where
                     if occlude_factor[idx2] > alpha {
                         continue;
                     }
-                    let arr_a: &[f32] = &data.data[nn.vid * params_r.aligned_dim
+                    let arr_a: &[TVal] = &data.data[nn.vid * params_r.aligned_dim
                         ..(nn.vid * params_r.aligned_dim) + params_r.aligned_dim];
-                    let arr_b: &[f32] = &data.data[pool[idx2].vid * params_r.aligned_dim
+                    let arr_b: &[TVal] = &data.data[pool[idx2].vid * params_r.aligned_dim
                         ..(pool[idx2].vid * params_r.aligned_dim) + params_r.aligned_dim];
                     let djk: f32 = TMetric::compare(arr_a, arr_b);
                     occlude_factor[idx2] = if djk == 0.0 {
@@ -486,7 +492,7 @@ where
         pruned_list: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
         scratch: &mut nn_query_scratch::InMemoryQueryScratch,
-        data: &AlignedDataStore<f32>,
+        data: &AlignedDataStore<TVal>,
     ) {
         let pool = &mut scratch.pool;
         if pool.len() == 0 {
@@ -527,7 +533,7 @@ where
         pruned_list: &mut Vec<usize>,
         params_r: &DiskANNParamsInternal,
         scratch: &mut nn_query_scratch::InMemoryQueryScratch,
-        data: &AlignedDataStore<f32>,
+        data: &AlignedDataStore<TVal>,
     ) {
         debug_assert!(!pruned_list.is_empty(), "inter_insert:: vid: {:?}", vid);
         let range = params_r.params_e.indexing_range;
@@ -565,9 +571,9 @@ where
                 let mut dummy_pool: Vec<ann::INode> = Vec::with_capacity(reserve_size);
                 for curr_nbr in copy_of_neighhbors.iter() {
                     if !dummy_visited.contains(curr_nbr) && *curr_nbr != *des {
-                        let arr_a: &[f32] = &data.data[*des * params_r.aligned_dim
+                        let arr_a: &[TVal] = &data.data[*des * params_r.aligned_dim
                             ..(*des * params_r.aligned_dim) + params_r.aligned_dim];
-                        let arr_b: &[f32] = &data.data[*curr_nbr * params_r.aligned_dim
+                        let arr_b: &[TVal] = &data.data[*curr_nbr * params_r.aligned_dim
                             ..(*curr_nbr * params_r.aligned_dim) + params_r.aligned_dim];
                         let dist: f32 = TMetric::compare(arr_a, arr_b);
                         dummy_pool.push(ann::INode {
@@ -646,13 +652,14 @@ where
         );
     }
 
-    fn search(&self, q: &[f32], k: usize) -> anyhow::Result<Vec<ann::Node>> {
+    fn search(&self, q: &[TVal], k: usize) -> anyhow::Result<Vec<ann::Node>> {
         let mut init_ids: Vec<usize> = Vec::new();
         let params_r = self.params.read();
         if init_ids.len() == 0 {
             init_ids.push(params_r.start);
         }
-        let mut q_aligned: AlignedDataStore<f32> = AlignedDataStore::new(params_r.aligned_dim, 1);
+        let mut q_aligned: AlignedDataStore<TVal> =
+            AlignedDataStore::<TVal>::new(params_r.aligned_dim, 1);
         q_aligned.data[0..q.len()].clone_from_slice(q);
         if TMetric::uses_preprocessor() {
             match TMetric::pre_process(&q_aligned.data[0..q_aligned.data.len()]) {
@@ -846,7 +853,7 @@ where
         vid: usize,
         delete_set: &HashSet<usize>,
         params_r: &DiskANNParamsInternal,
-        data: &AlignedDataStore<f32>,
+        data: &AlignedDataStore<TVal>,
     ) {
         // TODO(infrawhispers) - what should this be set as?
         let mut expanded_nodes_set: Vec<usize> = Vec::with_capacity(10);
@@ -865,9 +872,9 @@ where
         }
         let mut expanded_nbrs_vec: Vec<ann::INode> = Vec::with_capacity(expanded_nodes_set.len());
         expanded_nodes_set.iter().for_each(|nbr_vid| {
-            let arr_a: &[f32] = &data.data[*nbr_vid * params_r.aligned_dim
+            let arr_a: &[TVal] = &data.data[*nbr_vid * params_r.aligned_dim
                 ..(*nbr_vid * params_r.aligned_dim) + params_r.aligned_dim];
-            let arr_b: &[f32] = &data.data
+            let arr_b: &[TVal] = &data.data
                 [vid * params_r.aligned_dim..(vid * params_r.aligned_dim) + params_r.aligned_dim];
             expanded_nbrs_vec.push(ann::INode {
                 vid: *nbr_vid,
@@ -941,7 +948,7 @@ where
         println!("consolidate_delete time: {:?}", start.elapsed());
     }
 
-    fn insert(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
+    fn insert(&self, eids: &[EId], data: &[TVal]) -> anyhow::Result<()> {
         // we assume everything is good!
         {
             let params_r = self.params.read();
@@ -960,28 +967,28 @@ where
             "could not get enough vids to map to the eid database",
         );
         let data_processed;
-        let mut preprocess_scratch: Vec<f32>;
+        // let mut preprocess_scratch: Vec<TVal>;
 
-        if TMetric::uses_preprocessor() {
-            let params_r = self.params.read();
-            preprocess_scratch = vec![0.0f32; data.len()];
-            for idx in 0..vids.len() {
-                let idx_s_fr = idx * params_r.aligned_dim;
-                let idx_e_fr = idx_s_fr + params_r.aligned_dim;
-                match TMetric::pre_process(&data[idx_s_fr..idx_e_fr]) {
-                    Some(vec) => {
-                        preprocess_scratch[idx_s_fr..idx_e_fr].copy_from_slice(&vec[0..vec.len()]);
-                    }
-                    None => {
-                        preprocess_scratch[idx_s_fr..idx_e_fr]
-                            .copy_from_slice(&data[idx_s_fr..idx_e_fr]);
-                    }
-                }
-            }
-            data_processed = &preprocess_scratch[0..preprocess_scratch.len()];
-        } else {
-            data_processed = data
-        }
+        // if TMetric::uses_preprocessor() {
+        //     let params_r = self.params.read();
+        //     preprocess_scratch = vec![Default::default(); data.len()];
+        //     for idx in 0..vids.len() {
+        //         let idx_s_fr = idx * params_r.aligned_dim;
+        //         let idx_e_fr = idx_s_fr + params_r.aligned_dim;
+        //         match TMetric::pre_process(&data[idx_s_fr..idx_e_fr]) {
+        //             Some(vec) => {
+        //                 preprocess_scratch[idx_s_fr..idx_e_fr].copy_from_slice(&vec[0..vec.len()]);
+        //             }
+        //             None => {
+        //                 preprocess_scratch[idx_s_fr..idx_e_fr]
+        //                     .copy_from_slice(&data[idx_s_fr..idx_e_fr]);
+        //             }
+        //         }
+        //     }
+        //     data_processed = &preprocess_scratch[0..preprocess_scratch.len()];
+        // } else {
+        data_processed = data;
+        // }
         {
             // hold the lock and plop the data into our datastore - switching
             // to segments should allow us to not block _all_ readers during
@@ -1013,7 +1020,7 @@ where
         Ok(())
     }
     #[allow(dead_code)]
-    fn batch_insert(&self, eids: &[EId], data: &[f32]) -> Result<(), Box<dyn std::error::Error>> {
+    fn batch_insert(&self, eids: &[EId], data: &[TVal]) -> Result<(), Box<dyn std::error::Error>> {
         {
             // verify that we have the correct arguments
             let mut params_w = self.params.write();
@@ -1057,7 +1064,7 @@ where
         }
     }
 
-    fn new(params: &DiskANNParams) -> anyhow::Result<DiskANNV1Index<TMetric>> {
+    fn new(params: &DiskANNParams) -> anyhow::Result<DiskANNV1Index<TMetric, TVal>> {
         let num_frozen_pts: usize = 1;
         let total_internal_points: usize = params.max_points + num_frozen_pts;
         let aligned_dim: usize = ann::round_up(params.dim.try_into().unwrap()) as usize;
@@ -1122,7 +1129,7 @@ where
         let tag_to_location: Arc<RwLock<HashMap<EId, usize>>> =
             Arc::new(RwLock::new(HashMap::new()));
 
-        let data: Arc<RwLock<AlignedDataStore<f32>>>;
+        let data: Arc<RwLock<AlignedDataStore<TVal>>>;
 
         {
             let params = paramsi.read();
@@ -1143,7 +1150,7 @@ where
         }
 
         let id_increment = Arc::new(AtomicUsize::new(0));
-        let obj: DiskANNV1Index<TMetric> = DiskANNV1Index::<TMetric> {
+        let obj: DiskANNV1Index<TMetric, TVal> = DiskANNV1Index::<TMetric, TVal> {
             params: paramsi,
             data,
             in_graph,
