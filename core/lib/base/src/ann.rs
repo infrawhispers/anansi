@@ -71,7 +71,6 @@ pub trait ANNIndex {
     fn insert(&self, eids: &[EId], data: Points<Self::Val>) -> anyhow::Result<()>;
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()>;
     fn search(&self, q: &[Self::Val], k: usize) -> anyhow::Result<Vec<Node>>;
-    // fn search_fr_f32(&self, eids: &[EId], data: &[f32])
     fn save(&self) -> anyhow::Result<()>;
 }
 

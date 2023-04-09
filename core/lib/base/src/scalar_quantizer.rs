@@ -43,6 +43,19 @@ impl ScalarQuantizer {
         (offset, alpha)
     }
 
+    pub fn quantize_arr(&self, arr_a: &[f32]) -> (Vec<u8>, f32) {
+        let offset: f32;
+        let alpha: f32;
+        {
+            let settings_r = self.settings.read();
+            offset = settings_r.offset;
+            alpha = settings_r.alpha;
+        }
+        let result: Vec<u8> = arr_a.iter().map(|x| ((x - offset) / alpha) as u8).collect();
+        let sum: f32 = arr_a[..].iter().sum();
+        return (result, sum * offset * alpha);
+    }
+
     pub fn quantize(&self, vids: &[usize], arr_a: &[f32], requantize: Option<bool>) -> Vec<u8> {
         let offset: f32;
         let alpha: f32;
