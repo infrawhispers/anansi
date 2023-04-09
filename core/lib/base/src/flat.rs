@@ -337,6 +337,61 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn insert_with_quantization() {
+        let dimensions = 128;
+        let params = FlatParams {
+            dim: dimensions,
+            segment_size_kb: 512,
+        };
+        let index = FlatIndex::<metric::MetricL2, u8>::new(&params).unwrap();
+        let eids: Vec<ann::EId> = (0..1000)
+            .map(|id| {
+                let mut eid = [0u8; 16];
+                let id_str = id.clone().to_string();
+                let id_bytes = id_str.as_bytes();
+                eid[0..id_bytes.len()].copy_from_slice(&id_bytes[..]);
+                eid
+            })
+            .collect();
+        let mut points: Vec<f32> = Vec::with_capacity(dimensions * eids.len());
+        (0..1000).for_each(|factor| {
+            points.append(&mut vec![1.2 * (factor as f32); dimensions]);
+        });
+        assert_eq!(
+            (),
+            index
+                .insert(&eids, ann::Points::QuantizerIn { vals: &points[..] })
+                .unwrap()
+        );
+        let expect: Vec<ann::EId> = (998..1000)
+            .rev()
+            .map(|id| {
+                let mut eid = [0u8; 16];
+                let id_str = id.clone().to_string();
+                let id_bytes = id_str.as_bytes();
+                eid[0..id_bytes.len()].copy_from_slice(&id_bytes[..]);
+                eid
+            })
+            .collect();
+        let point_search = vec![1.2 * (10000 as f32); dimensions];
+        match index.search(
+            ann::Points::QuantizerIn {
+                vals: &point_search,
+            },
+            expect.len(),
+        ) {
+            Ok(res) => {
+                let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
+                assert_eq!(expect, result);
+            }
+            Err(_) => {
+                panic!("error should not be thrown on search");
+            }
+        }
+    }
+
     #[test]
     fn insert_large_wpadding() {
         let dimensions = 126;
