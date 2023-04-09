@@ -59,7 +59,7 @@ where
         self.delete(eids)
     }
 
-    fn search(&self, q: &[Self::Val], k: usize) -> anyhow::Result<Vec<ann::Node>> {
+    fn search(&self, q: ann::Points<TVal>, k: usize) -> anyhow::Result<Vec<ann::Node>> {
         self.search(q, k)
     }
 
@@ -256,15 +256,43 @@ where
 
         Ok(())
     }
-    pub fn search(&self, q: &[TVal], k: usize) -> anyhow::Result<Vec<ann::Node>> {
-        if q.len() > self.aligned_dim {
-            bail!("query dim: {} > aligned_dim: {}", q.len(), self.aligned_dim);
+    pub fn search(&self, q: ann::Points<TVal>, k: usize) -> anyhow::Result<Vec<ann::Node>> {
+        let mut data: &[TVal];
+        let quantize_result: Vec<TVal>;
+        match q {
+            ann::Points::QuantizerIn { vals } => {
+                let (res, _) = self.quantizer.quantize_arr(vals);
+                quantize_result = res
+                    .iter()
+                    .map(|x| TVal::from_u8(*x).expect("unable to coerce to u8"))
+                    .collect();
+                data = &quantize_result[..]
+            }
+            ann::Points::Values { vals } => data = vals,
         }
+        if data.len() > self.aligned_dim {
+            bail!(
+                "query dim: {} > aligned_dim: {}",
+                data.len(),
+                self.aligned_dim
+            );
+        }
+
+        let padded_vector: Vec<TVal>;
+        let padded_points: &[TVal];
+        match ann::pad_and_preprocess::<TVal, TMetric>(data, data.len(), self.aligned_dim) {
+            Some(vec) => {
+                padded_vector = vec;
+                padded_points = &padded_vector[..]
+            }
+            None => padded_points = data,
+        }
+
         // maybe we want to keep around a bunch of these in a pool we can pull from?
         let mut res_heap: BinaryHeap<ann::Node> = BinaryHeap::with_capacity(k + 1);
         let mut q_aligned: av_store::AlignedDataStore<TVal> =
             av_store::AlignedDataStore::<TVal>::new(1, self.aligned_dim);
-        q_aligned.data[..q.len()].copy_from_slice(&q[..]);
+        q_aligned.data[..padded_points.len()].copy_from_slice(&padded_points[..]);
         // we should probably use rayon over segments and have multiple vectors
         // in a given segment
         self.datastore
@@ -355,7 +383,12 @@ mod tests {
         }
         // now craft a search that includes the vector in the external segment!
         let point_search = vec![1.2 * (10000 as f32); dimensions];
-        match index.search(&point_search, 1) {
+        match index.search(
+            ann::Points::Values {
+                vals: &point_search,
+            },
+            1,
+        ) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
                 assert_eq!(vec![id], result);
@@ -386,7 +419,12 @@ mod tests {
             }
         }
         let point_search = vec![0.0; 32];
-        match index.search(&point_search, 1) {
+        match index.search(
+            ann::Points::Values {
+                vals: &point_search,
+            },
+            1,
+        ) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
                 assert_eq!(vec![[0u8; 16]], result);
@@ -402,7 +440,12 @@ mod tests {
             .expect("unable to remove the item from the database");
         // then issue the search and ensure the old mapping does
         // not come up
-        match index.search(&point_search, 1) {
+        match index.search(
+            ann::Points::Values {
+                vals: &point_search,
+            },
+            1,
+        ) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
                 let mut expected_id = [0u8; 16];
@@ -435,7 +478,12 @@ mod tests {
             }
         }
         let point_search = vec![0.4; 32];
-        match index.search(&point_search, 1) {
+        match index.search(
+            ann::Points::Values {
+                vals: &point_search,
+            },
+            1,
+        ) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
                 assert_eq!(vec![[0u8; 16]], result);
@@ -466,7 +514,12 @@ mod tests {
             }
         }
         let point_search = vec![0.1; 128];
-        match index.search(&point_search, 1) {
+        match index.search(
+            ann::Points::Values {
+                vals: &point_search,
+            },
+            1,
+        ) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
                 assert_eq!(vec![[0u8; 16]], result);

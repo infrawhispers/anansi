@@ -183,7 +183,7 @@ mod test {
                 .expect("unexpected error when deleting records from the index");
             // now issue a query for the top k!
             let nns = ann_idx
-                .search(&query_vec, k)
+                .search(ann::Points::Values { vals: &query_vec }, k)
                 .expect("unexpected error fetching the closest vectors");
             let mut nodes_found: HashSet<ann::EId> = HashSet::new();
             nns.iter().for_each(|nn| {
@@ -284,7 +284,7 @@ mod test {
                 std::mem::size_of::<usize>(),
             );
             let nns = ann_idx
-                .search(&query_vec, k)
+                .search(ann::Points::Values { vals: &query_vec }, k)
                 .expect("unexpected error fetching the closest vectors");
             let mut nodes_found: HashSet<ann::EId> = HashSet::new();
             for nn in nns.iter() {

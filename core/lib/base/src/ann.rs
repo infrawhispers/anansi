@@ -63,14 +63,14 @@ pub enum Points<'a, T> {
 
 // primary trait that enables an obj to act as an ANNIndex - this
 // allows us to use multiple different backends in the future.
-pub trait ANNIndex {
+pub trait ANNIndex: Send + Sync {
     type Val;
     fn new(params: &ANNParams) -> anyhow::Result<Self>
     where
         Self: Sized;
     fn insert(&self, eids: &[EId], data: Points<Self::Val>) -> anyhow::Result<()>;
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()>;
-    fn search(&self, q: &[Self::Val], k: usize) -> anyhow::Result<Vec<Node>>;
+    fn search(&self, q: Points<Self::Val>, k: usize) -> anyhow::Result<Vec<Node>>;
     fn save(&self) -> anyhow::Result<()>;
 }
 

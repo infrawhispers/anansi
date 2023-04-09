@@ -6,6 +6,7 @@ use crate::errors;
 use crate::metric;
 use crate::nn_query_scratch;
 use crate::nn_queue;
+use crate::scalar_quantizer;
 
 use anyhow::bail;
 use crossbeam_channel::{bounded, Receiver, Sender};
@@ -62,6 +63,7 @@ pub struct DiskANNV1Index<TMetric, TVal: ann::ElementVal> {
     empty_slots: Arc<RwLock<HashSet<usize>>>,
     s_scratch: Sender<nn_query_scratch::InMemoryQueryScratch>,
     r_scratch: Receiver<nn_query_scratch::InMemoryQueryScratch>,
+    quantizer: Arc<scalar_quantizer::ScalarQuantizer>,
     // indexing_pool: rayon::ThreadPool,
     // handle: Option<thread::JoinHandle<()>>,
 }
@@ -94,7 +96,7 @@ where
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()> {
         self.delete(eids)
     }
-    fn search(&self, q: &[TVal], k: usize) -> anyhow::Result<Vec<ann::Node>> {
+    fn search(&self, q: ann::Points<TVal>, k: usize) -> anyhow::Result<Vec<ann::Node>> {
         self.search(q, k)
     }
     fn save(&self) -> anyhow::Result<()> {
@@ -652,19 +654,50 @@ where
         );
     }
 
-    fn search(&self, q: &[TVal], k: usize) -> anyhow::Result<Vec<ann::Node>> {
+    fn search(&self, q: ann::Points<TVal>, k: usize) -> anyhow::Result<Vec<ann::Node>> {
         let mut init_ids: Vec<usize> = Vec::new();
         let params_r = self.params.read();
         if init_ids.len() == 0 {
             init_ids.push(params_r.start);
         }
+
+        let mut data: &[TVal];
+        let quantize_result: Vec<TVal>;
+        match q {
+            ann::Points::QuantizerIn { vals } => {
+                let (res, _) = self.quantizer.quantize_arr(vals);
+                quantize_result = res
+                    .iter()
+                    .map(|x| TVal::from_u8(*x).expect("unable to coerce to u8"))
+                    .collect();
+                data = &quantize_result[..]
+            }
+            ann::Points::Values { vals } => data = vals,
+        }
+        if data.len() > params_r.aligned_dim {
+            bail!(
+                "query dim: {} > aligned_dim: {}",
+                data.len(),
+                params_r.aligned_dim
+            );
+        }
+        let padded_vector: Vec<TVal>;
+        let padded_points: &[TVal];
+        match ann::pad_and_preprocess::<TVal, TMetric>(data, data.len(), params_r.aligned_dim) {
+            Some(vec) => {
+                padded_vector = vec;
+                padded_points = &padded_vector[..]
+            }
+            None => padded_points = data,
+        }
+
         let mut q_aligned: AlignedDataStore<TVal> =
             AlignedDataStore::<TVal>::new(params_r.aligned_dim, 1);
-        q_aligned.data[0..q.len()].clone_from_slice(q);
+        q_aligned.data[0..padded_points.len()].clone_from_slice(padded_points);
         if TMetric::uses_preprocessor() {
             match TMetric::pre_process(&q_aligned.data[0..q_aligned.data.len()]) {
                 Some(vec) => {
-                    q_aligned.data[0..q.len()].copy_from_slice(&vec[0..vec.len()]);
+                    q_aligned.data[0..padded_points.len()].copy_from_slice(&vec[0..vec.len()]);
                 }
                 None => {}
             }
@@ -1172,6 +1205,7 @@ where
             // indexing_pool: indexing_pool,
             s_scratch: s,
             r_scratch: r,
+            quantizer: Arc::new(scalar_quantizer::ScalarQuantizer::new(0.99)?),
         };
         // any additional setup that we need to do _on the instance_
         obj.set_start_point_at_random(5.0);
