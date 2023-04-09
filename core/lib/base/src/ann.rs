@@ -185,7 +185,7 @@ pub fn pad_and_preprocess<T: ElementVal, M: metric::Metric<T>>(
     current_dim: usize,
     aligned_dim: usize,
 ) -> Option<Vec<T>> {
-    let mut padded_vector: Vec<T> = Vec::new();
+    let mut padded_vector: Vec<T>;
     if !M::uses_preprocessor() && current_dim == aligned_dim {
         return None;
     }

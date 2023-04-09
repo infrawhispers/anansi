@@ -661,7 +661,7 @@ where
             init_ids.push(params_r.start);
         }
 
-        let mut data: &[TVal];
+        let data: &[TVal];
         let quantize_result: Vec<TVal>;
         match q {
             ann::Points::QuantizerIn { vals } => {
@@ -984,7 +984,7 @@ where
     fn insert(&self, eids: &[EId], p: ann::Points<TVal>) -> anyhow::Result<()> {
         let data: &[TVal];
         match p {
-            ann::Points::QuantizerIn { vals } => {
+            ann::Points::QuantizerIn { .. } => {
                 unreachable!("incorrect params passed for construction")
             }
             ann::Points::Values { vals } => data = vals,

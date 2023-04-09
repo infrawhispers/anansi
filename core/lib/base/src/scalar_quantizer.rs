@@ -1,8 +1,4 @@
-use crate::ann;
 use parking_lot::RwLock;
-use rand::distributions::{Distribution, Uniform};
-use rand::Rng;
-use std::array;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -107,8 +103,11 @@ impl ScalarQuantizer {
     }
 }
 
+#[allow(unused_imports)]
 mod tests {
     use super::*;
+    use rand::distributions::{Distribution, Uniform};
+
     #[test]
     fn test_quantizer() {
         let obj = ScalarQuantizer::new(0.99).expect("unable to create the quantizer");

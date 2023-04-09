@@ -1,8 +1,6 @@
-use anyhow::anyhow;
 use anyhow::bail;
 use parking_lot::RwLock;
 use std::collections::{BinaryHeap, HashMap, HashSet};
-use std::default::Default;
 use std::marker::PhantomData;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
@@ -128,7 +126,7 @@ where
             idx_by_vid.insert(*vid, idx);
         });
 
-        let mut data: &[TVal];
+        let data: &[TVal];
         let quantize_result: Vec<TVal>;
         match points {
             ann::Points::QuantizerIn { vals } => {
@@ -183,7 +181,7 @@ where
             }
         });
         let mut new_segment_ids: Vec<usize> = Vec::with_capacity(2);
-        vid_by_segment_id.iter().for_each(|(segment_id, vids)| {
+        vid_by_segment_id.iter().for_each(|(segment_id, _)| {
             match self.datastore.read().get(&segment_id) {
                 Some(_segment) => {}
                 None => new_segment_ids.push(*segment_id),
@@ -257,7 +255,7 @@ where
         Ok(())
     }
     pub fn search(&self, q: ann::Points<TVal>, k: usize) -> anyhow::Result<Vec<ann::Node>> {
-        let mut data: &[TVal];
+        let data: &[TVal];
         let quantize_result: Vec<TVal>;
         match q {
             ann::Points::QuantizerIn { vals } => {
