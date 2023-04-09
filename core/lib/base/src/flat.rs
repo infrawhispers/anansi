@@ -133,7 +133,7 @@ where
             idx_by_vid.insert(*vid, idx);
         });
 
-        let data: &[TVal];
+        let mut data: &[TVal];
         let quantize_result: Vec<TVal>;
         match points {
             ann::Points::QuantizerIn { vals } => {
@@ -148,45 +148,32 @@ where
             ann::Points::Values { vals } => data = vals,
         }
 
-        // we now have a bunch of data => TVals
-
-        // if point.len() > self.aligned_dim {
-        //     bail!(
-        //         "point dim: {} > aligned_dim: {}",
-        //         point.len(),
-        //         self.aligned_dim
-        //     );
-        // }
-        // // let mut padded_point: &[TVal] = point;
-        // // let mut data: Vec<TVal>;
-        // // if point.len() < self.aligned_dim {
-        // //     data = vec![Default::default(); self.aligned_dim];
-        // //     data[0..point.len()].copy_from_slice(point);
-        // //     padded_point = &data[..]
-        // // }
-        // let mut padded_point = vec![Default::default(); self.aligned_dim];
-        let padded_point: &[TVal];
-        let mut preprocess_scratch: Vec<TVal>;
-        let aligned_dim = self.aligned_dim;
-        if TMetric::uses_preprocessor() {
-            preprocess_scratch = vec![Default::default(); self.aligned_dim];
-            for idx in 0..vids.len() {
-                let idx_s_fr = idx * aligned_dim;
-                let idx_e_fr = idx_s_fr + aligned_dim;
-                match TMetric::pre_process(&data[idx_s_fr..idx_e_fr]) {
-                    Some(vec) => {
-                        preprocess_scratch[idx_s_fr..idx_e_fr].copy_from_slice(&vec[0..vec.len()]);
-                    }
-                    None => {
-                        preprocess_scratch[idx_s_fr..idx_e_fr]
-                            .copy_from_slice(&data[idx_s_fr..idx_e_fr]);
-                    }
-                }
-            }
-            padded_point = &preprocess_scratch[..];
-        } else {
-            padded_point = data;
+        let per_vector_dim = data.len() / eids.len() as usize;
+        if data.len() % eids.len() != 0 {
+            bail!(
+                "point dim: {}  aligned_dim: {} not divisble.",
+                data.len(),
+                eids.len(),
+            );
         }
+        if per_vector_dim > self.aligned_dim {
+            bail!(
+                "point dim: {} > aligned dim: {}",
+                per_vector_dim,
+                self.aligned_dim,
+            )
+        }
+
+        let padded_vector: Vec<TVal>;
+        let padded_points: &[TVal];
+        match ann::pad_and_preprocess::<TVal, TMetric>(data, per_vector_dim, self.aligned_dim) {
+            Some(vec) => {
+                padded_vector = vec;
+                padded_points = &padded_vector[..]
+            }
+            None => padded_points = data,
+        }
+
         let mut vid_by_segment_id: HashMap<usize, Vec<usize>> = HashMap::new();
         vids.iter().for_each(|vid| {
             let segment_id = (vid / self.v_per_segment) as usize;
@@ -218,7 +205,7 @@ where
         for (segment_id, vids) in vid_by_segment_id {
             match datastore.get(&segment_id) {
                 None => {
-                    bail!("unexpectedly, the segment is missing when it was previously inserted - bailing")
+                    bail!("unexpectedly, the segment: {segment_id} is missing - bailing")
                 }
                 Some(segment) => {
                     let mut segment_w = segment.write();
@@ -227,12 +214,12 @@ where
                         match idx_by_vid.get(&vid) {
                             Some(index) => idx = *index,
                             None => {
-                                bail!("unexpected...")
+                                bail!("every vid should have an associated index - vid: {vid} is missing one")
                             }
                         }
                         segment_w.aligned_insert(
                             (vid % self.v_per_segment).try_into().unwrap(),
-                            &padded_point
+                            &padded_points
                                 [idx * self.aligned_dim..idx * self.aligned_dim + self.aligned_dim],
                         )
                     }
@@ -331,33 +318,38 @@ mod tests {
     use super::*;
     #[test]
     fn insert_large_wpadding() {
+        let dimensions = 126;
         let params = FlatParams {
-            dim: 128,
+            dim: dimensions,
             segment_size_kb: 512,
         };
         let index = FlatIndex::<metric::MetricL2, f32>::new(&params).unwrap();
-        //     // insert the first 1000 vectors into the index (nb: 1000 per segment)
-        for i in 0..1000 {
-            let mut id = [0u8; 16];
-            let id_str = i.clone().to_string();
-            let id_bytes = id_str.as_bytes();
-            id[0..id_bytes.len()].copy_from_slice(&id_bytes[..]);
-            let point = vec![1.2 * (i as f32); 128];
-            match index.insert(&vec![id; 1], ann::Points::Values { vals: &point[..] }) {
-                Ok(res) => {
-                    assert_eq!((), res);
-                }
-                Err(_) => {
-                    panic!("error should not be thrown on insert");
-                }
-            }
-        }
-        // then insert the 1001 vector - this will cause a new segement to be created
+        // insert the first 1000 vectors into the index (nb: 1000 per segment)
+        let eids: Vec<ann::EId> = (0..1000)
+            .map(|id| {
+                let mut eid = [0u8; 16];
+                let id_str = id.clone().to_string();
+                let id_bytes = id_str.as_bytes();
+                eid[0..id_bytes.len()].copy_from_slice(&id_bytes[..]);
+                eid
+            })
+            .collect();
+        let mut points: Vec<f32> = Vec::with_capacity(dimensions * eids.len());
+        (0..1000).for_each(|factor| {
+            points.append(&mut vec![1.2 * (factor as f32); dimensions]);
+        });
+        assert_eq!(
+            (),
+            index
+                .insert(&eids, ann::Points::Values { vals: &points[..] })
+                .unwrap()
+        );
+        // then insert the 1001th vector - this will cause a new segement to be created
         let mut id = [0u8; 16];
         let id_str = "1000".to_string();
         let id_bytes = id_str.as_bytes();
         id[0..id_bytes.len()].copy_from_slice(&id_bytes[..]);
-        let point = vec![1.2 * (1000 as f32); 128];
+        let point = vec![1.2 * (1000 as f32); dimensions];
         match index.insert(&vec![id; 1], ann::Points::Values { vals: &point[..] }) {
             Ok(res) => {
                 assert_eq!((), res);
@@ -367,7 +359,7 @@ mod tests {
             }
         }
         // now craft a search that includes the vector in the external segment!
-        let point_search = vec![1.2 * (10000 as f32); 128];
+        let point_search = vec![1.2 * (10000 as f32); dimensions];
         match index.search(&point_search, 1) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();

@@ -4,6 +4,7 @@ use std::default::Default;
 
 use crate::diskannv1::DiskANNParams;
 use crate::flat::FlatParams;
+use crate::metric;
 use num::traits::NumAssign;
 
 #[derive(Debug)]
@@ -163,4 +164,92 @@ pub fn copy_within_a_slice<T: Clone>(v: &mut [T], from: usize, to: usize, len: u
         let (src, dst) = v.split_at_mut(to);
         dst[..len].clone_from_slice(&src[from..from + len]);
     }
+}
+
+pub fn get_padded_vector<T: ElementVal>(
+    data: &[T],
+    current_dim: usize,
+    aligned_dim: usize,
+) -> Vec<T> {
+    let mut result: Vec<T> = vec![Default::default(); (data.len() / current_dim) * aligned_dim];
+    let mut cnt: usize = 0;
+    for idx in (0..data.len()).step_by(current_dim) {
+        let into_offset = (aligned_dim - current_dim) * cnt;
+        result[idx + into_offset..idx + current_dim + into_offset]
+            .copy_from_slice(&data[idx..idx + current_dim]);
+        cnt += 1
+    }
+    result
+}
+
+pub fn pad_and_preprocess<T: ElementVal, M: metric::Metric<T>>(
+    data: &[T],
+    current_dim: usize,
+    aligned_dim: usize,
+) -> Option<Vec<T>> {
+    let mut padded_vector: Vec<T> = Vec::new();
+    if !M::uses_preprocessor() && current_dim == aligned_dim {
+        return None;
+    }
+    if current_dim != aligned_dim {
+        padded_vector = get_padded_vector::<T>(data, current_dim, aligned_dim);
+        // vec = &padded_vector;
+    } else {
+        padded_vector = vec![Default::default(); (data.len() / current_dim) * aligned_dim];
+        padded_vector[..].copy_from_slice(&data[..]);
+        // vec = data;
+    }
+    if M::uses_preprocessor() {
+        let num_vectors = padded_vector.len() / aligned_dim;
+        for idx in 0..num_vectors {
+            let idx_s_fr = idx * aligned_dim;
+            let idx_e_fr = idx_s_fr + aligned_dim;
+            let vec: &[T] = if current_dim != aligned_dim {
+                &padded_vector
+            } else {
+                data
+            };
+            let res = M::pre_process(&vec[idx_s_fr..idx_e_fr]);
+            match res {
+                Some(vec_result) => {
+                    padded_vector[idx_s_fr..idx_e_fr].copy_from_slice(&vec_result[..]);
+                }
+                None => {}
+            }
+        }
+    }
+    Some(padded_vector)
+
+    /*
+       // STEP 1 - align the vector if we need to!
+       // let padded_vector: Vec<TVal>;
+       // if per_vector_dim != self.aligned_dim {
+       //     padded_vector = ann::get_padded_vector::<TVal>(data, per_vector_dim, self.aligned_dim);
+       //     data = &padded_vector;
+       // }
+
+       // // STEP 2 - now do any preprocessing that we may need to do!
+       // let padded_point: &[TVal];
+       // let mut preprocess_scratch: Vec<TVal>;
+       // let aligned_dim = self.aligned_dim;
+       // if TMetric::uses_preprocessor() {
+       //     preprocess_scratch = vec![Default::default(); self.aligned_dim];
+       //     for idx in 0..vids.len() {
+       //         let idx_s_fr = idx * aligned_dim;
+       //         let idx_e_fr = idx_s_fr + aligned_dim;
+       //         match TMetric::pre_process(&data[idx_s_fr..idx_e_fr]) {
+       //             Some(vec) => {
+       //                 preprocess_scratch[idx_s_fr..idx_e_fr].copy_from_slice(&vec[0..vec.len()]);
+       //             }
+       //             None => {
+       //                 preprocess_scratch[idx_s_fr..idx_e_fr]
+       //                     .copy_from_slice(&data[idx_s_fr..idx_e_fr]);
+       //             }
+       //         }
+       //     }
+       //     padded_point = &preprocess_scratch[..];
+       // } else {
+       //     padded_point = data;
+       // }
+    */
 }
