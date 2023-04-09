@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use anyhow::bail;
 use parking_lot::RwLock;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -10,6 +11,7 @@ use super::av_store;
 use crate::ann;
 use crate::ann::EId;
 use crate::metric;
+use crate::scalar_quantizer;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FlatParams {
@@ -21,6 +23,7 @@ pub struct FlatParams {
 #[allow(dead_code)]
 pub struct FlatIndex<TMetric, TVal: ann::ElementVal> {
     pub metric: PhantomData<TMetric>,
+    // pub tstore: PhantomData<TStore>,
     pub(crate) params: Arc<FlatParams>,
     datastore: Arc<RwLock<HashMap<usize, RwLock<av_store::AlignedDataStore<TVal>>>>>,
     id_increment: Arc<AtomicUsize>,
@@ -29,6 +32,8 @@ pub struct FlatIndex<TMetric, TVal: ann::ElementVal> {
     vid_to_eid: Arc<RwLock<HashMap<usize, EId>>>,
     v_per_segment: usize,
     aligned_dim: usize,
+
+    quantizer: Arc<scalar_quantizer::ScalarQuantizer>,
 }
 
 impl<TMetric, TVal> ann::ANNIndex for FlatIndex<TMetric, TVal>
@@ -47,24 +52,13 @@ where
         FlatIndex::new(flat_params)
     }
 
-    fn insert(&self, eids: &[EId], data: &[TVal]) -> anyhow::Result<()> {
-        if (data.len() % eids.len()) != 0 {
-            bail!(
-                "data is not an exact multiple of eids - data_len: {} | eids_len: {}",
-                eids.len(),
-                data.len()
-            );
-        }
-        let data_len = data.len() / eids.len();
-        for (idx, eid) in eids.iter().enumerate() {
-            match self.insert(*eid, &data[idx * data_len..idx * data_len + data_len]) {
-                Ok(_) => {}
-                Err(err) => {
-                    return Err(err);
-                }
-            }
-        }
-        Ok(())
+    fn insert_with_f32(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
+        unimplemented!()
+        // self.quantize()
+    }
+
+    fn insert(&self, eids: &[EId], points: ann::Points<TVal>) -> anyhow::Result<()> {
+        self.insert(eids, points)
     }
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()> {
         self.delete(eids)
@@ -104,6 +98,7 @@ where
             Arc::new(RwLock::new(HashMap::with_capacity(v_per_segment * 2)));
         let tag_to_location: Arc<RwLock<HashMap<ann::EId, usize>>> =
             Arc::new(RwLock::new(HashMap::with_capacity(v_per_segment * 2)));
+
         Ok(FlatIndex {
             metric: PhantomData,
             params: Arc::new(params.clone()),
@@ -115,64 +110,144 @@ where
 
             v_per_segment: v_per_segment,
             aligned_dim: aligned_dim,
+
+            quantizer: Arc::new(scalar_quantizer::ScalarQuantizer::new(0.99)?),
         })
     }
-    pub fn insert(&self, eid: ann::EId, point: &[TVal]) -> anyhow::Result<()> {
-        if point.len() > self.aligned_dim {
-            bail!(
-                "point dim: {} > aligned_dim: {}",
-                point.len(),
-                self.aligned_dim
-            );
-        }
-        let mut padded_point: &[TVal] = point;
-        let mut data: Vec<TVal>;
-        if point.len() < self.aligned_dim {
-            data = vec![Default::default(); self.aligned_dim];
-            data[0..point.len()].copy_from_slice(point);
-            padded_point = &data[..]
-        }
-        let vid: usize;
+    pub fn insert(&self, eids: &[ann::EId], points: ann::Points<TVal>) -> anyhow::Result<()> {
+        let mut idx_by_vid: HashMap<usize, usize> = HashMap::new();
+        let mut vids: Vec<usize> = Vec::with_capacity(eids.len());
         {
-            match self.eid_to_vid.read().get(&eid) {
-                Some(vid_existing) => vid = *vid_existing,
+            let eid_to_vid = self.eid_to_vid.read();
+            eids.iter().for_each(|eid| match eid_to_vid.get(eid) {
+                Some(vid_existing) => vids.push(*vid_existing),
                 None => {
-                    vid = self
-                        .id_increment
-                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    vids.push(
+                        self.id_increment
+                            .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+                    );
+                }
+            });
+        }
+        vids.iter().enumerate().for_each(|(idx, vid)| {
+            idx_by_vid.insert(*vid, idx);
+        });
+
+        let data: &[TVal];
+        let quantize_result: Vec<TVal>;
+        match points {
+            ann::Points::QuantizerIn { vals } => {
+                quantize_result = self
+                    .quantizer
+                    .quantize(&vids, vals, None)
+                    .iter()
+                    .map(|x| TVal::from_u8(*x).expect("unable to coerce to u8"))
+                    .collect();
+                data = &quantize_result[..]
+            }
+            ann::Points::Values { vals } => data = vals,
+        }
+
+        // we now have a bunch of data => TVals
+
+        // if point.len() > self.aligned_dim {
+        //     bail!(
+        //         "point dim: {} > aligned_dim: {}",
+        //         point.len(),
+        //         self.aligned_dim
+        //     );
+        // }
+        // // let mut padded_point: &[TVal] = point;
+        // // let mut data: Vec<TVal>;
+        // // if point.len() < self.aligned_dim {
+        // //     data = vec![Default::default(); self.aligned_dim];
+        // //     data[0..point.len()].copy_from_slice(point);
+        // //     padded_point = &data[..]
+        // // }
+        // let mut padded_point = vec![Default::default(); self.aligned_dim];
+        let padded_point: &[TVal];
+        let mut preprocess_scratch: Vec<TVal>;
+        let aligned_dim = self.aligned_dim;
+        if TMetric::uses_preprocessor() {
+            preprocess_scratch = vec![Default::default(); self.aligned_dim];
+            for idx in 0..vids.len() {
+                let idx_s_fr = idx * aligned_dim;
+                let idx_e_fr = idx_s_fr + aligned_dim;
+                match TMetric::pre_process(&data[idx_s_fr..idx_e_fr]) {
+                    Some(vec) => {
+                        preprocess_scratch[idx_s_fr..idx_e_fr].copy_from_slice(&vec[0..vec.len()]);
+                    }
+                    None => {
+                        preprocess_scratch[idx_s_fr..idx_e_fr]
+                            .copy_from_slice(&data[idx_s_fr..idx_e_fr]);
+                    }
                 }
             }
+            padded_point = &preprocess_scratch[..];
+        } else {
+            padded_point = data;
         }
-        let segment_id = (vid / self.v_per_segment) as usize;
-        let need_new_segment: bool;
-        {
-            match self.datastore.read().get(&segment_id) {
-                Some(_segment) => need_new_segment = false,
-                None => need_new_segment = true,
+        let mut vid_by_segment_id: HashMap<usize, Vec<usize>> = HashMap::new();
+        vids.iter().for_each(|vid| {
+            let segment_id = (vid / self.v_per_segment) as usize;
+            let mut need_new_list = false;
+            match vid_by_segment_id.get_mut(&segment_id) {
+                Some(vids_list) => vids_list.push(*vid),
+                None => need_new_list = true,
             }
-        }
-        if need_new_segment {
+            if need_new_list {
+                let new_list = vec![*vid];
+                vid_by_segment_id.insert(segment_id, new_list);
+            }
+        });
+        let mut new_segment_ids: Vec<usize> = Vec::with_capacity(2);
+        vid_by_segment_id.iter().for_each(|(segment_id, vids)| {
+            match self.datastore.read().get(&segment_id) {
+                Some(_segment) => {}
+                None => new_segment_ids.push(*segment_id),
+            }
+        });
+        new_segment_ids.iter().for_each(|segment_id| {
             let new_segment = RwLock::new(av_store::AlignedDataStore::new(
                 self.v_per_segment.try_into().unwrap(),
                 self.aligned_dim.try_into().unwrap(),
             ));
-            self.datastore.write().insert(segment_id, new_segment);
-        }
-        match self.datastore.read().get(&segment_id) {
-            None => {
-                bail!(
-                    "unexpectedly, the segement is missing when it was previously inserted - bailing",
-                );
+            self.datastore.write().insert(*segment_id, new_segment);
+        });
+        let datastore = self.datastore.read();
+        for (segment_id, vids) in vid_by_segment_id {
+            match datastore.get(&segment_id) {
+                None => {
+                    bail!("unexpectedly, the segment is missing when it was previously inserted - bailing")
+                }
+                Some(segment) => {
+                    let mut segment_w = segment.write();
+                    for vid in vids {
+                        let idx: usize;
+                        match idx_by_vid.get(&vid) {
+                            Some(index) => idx = *index,
+                            None => {
+                                bail!("unexpected...")
+                            }
+                        }
+                        segment_w.aligned_insert(
+                            (vid % self.v_per_segment).try_into().unwrap(),
+                            &padded_point
+                                [idx * self.aligned_dim..idx * self.aligned_dim + self.aligned_dim],
+                        )
+                    }
+                }
             }
-            Some(segment) => segment
-                .write()
-                .aligned_insert((vid % self.v_per_segment).try_into().unwrap(), padded_point),
         }
-        self.eid_to_vid.write().insert(eid, vid);
-        self.vid_to_eid.write().insert(vid, eid);
-
+        let mut eid_to_vid = self.eid_to_vid.write();
+        let mut vid_to_eid = self.vid_to_eid.write();
+        for (idx, vid) in vids.iter().enumerate() {
+            eid_to_vid.insert(eids[idx], *vid);
+            vid_to_eid.insert(*vid, eids[idx]);
+        }
         Ok(())
     }
+
     pub fn delete(&self, eids: &[ann::EId]) -> anyhow::Result<()> {
         eids.iter().for_each(|eid| {
             let vid: usize;
@@ -194,7 +269,6 @@ where
                 self.vid_to_eid.write().remove(&vid);
                 self.delete_set.write().insert(vid);
             }
-            // println!("removing the eid");
             // key is in our mapping so do the delete set dance
         });
 
@@ -262,14 +336,14 @@ mod tests {
             segment_size_kb: 512,
         };
         let index = FlatIndex::<metric::MetricL2, f32>::new(&params).unwrap();
-        // insert the first 1000 vectors into the index (nb: 1000 per segment)
+        //     // insert the first 1000 vectors into the index (nb: 1000 per segment)
         for i in 0..1000 {
             let mut id = [0u8; 16];
             let id_str = i.clone().to_string();
             let id_bytes = id_str.as_bytes();
             id[0..id_bytes.len()].copy_from_slice(&id_bytes[..]);
             let point = vec![1.2 * (i as f32); 128];
-            match index.insert(id, &point[..]) {
+            match index.insert(&vec![id; 1], ann::Points::Values { vals: &point[..] }) {
                 Ok(res) => {
                     assert_eq!((), res);
                 }
@@ -284,7 +358,7 @@ mod tests {
         let id_bytes = id_str.as_bytes();
         id[0..id_bytes.len()].copy_from_slice(&id_bytes[..]);
         let point = vec![1.2 * (1000 as f32); 128];
-        match index.insert(id, &point[..]) {
+        match index.insert(&vec![id; 1], ann::Points::Values { vals: &point[..] }) {
             Ok(res) => {
                 assert_eq!((), res);
             }
@@ -293,7 +367,7 @@ mod tests {
             }
         }
         // now craft a search that includes the vector in the external segment!
-        let point_search = vec![1.2 * (10001 as f32); 128];
+        let point_search = vec![1.2 * (10000 as f32); 128];
         match index.search(&point_search, 1) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
@@ -307,15 +381,15 @@ mod tests {
     #[test]
     fn insert_small_delete() {
         let params = FlatParams {
-            dim: 31,
+            dim: 32,
             segment_size_kb: 512,
         };
         let index = FlatIndex::<metric::MetricL2, f32>::new(&params).unwrap();
         for i in 0..10 {
             let mut id = [0u8; 16];
             id[0] = i;
-            let point = vec![100.0 * (i as f32); 31];
-            match index.insert(id, &point[..]) {
+            let point = vec![100.0 * (i as f32); 32];
+            match index.insert(&vec![id; 1], ann::Points::Values { vals: &point[..] }) {
                 Ok(res) => {
                     assert_eq!((), res);
                 }
@@ -324,7 +398,7 @@ mod tests {
                 }
             }
         }
-        let point_search = vec![0.0; 31];
+        let point_search = vec![0.0; 32];
         match index.search(&point_search, 1) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
@@ -356,15 +430,15 @@ mod tests {
     #[test]
     fn insert_small_wpadding() {
         let params = FlatParams {
-            dim: 31,
+            dim: 32,
             segment_size_kb: 512,
         };
         let index = FlatIndex::<metric::MetricL2, f32>::new(&params).unwrap();
         for i in 0..10 {
             let mut id = [0u8; 16];
             id[0] = i;
-            let point = vec![1.2 * (i as f32); 31];
-            match index.insert(id, &point[..]) {
+            let point = vec![1.2 * (i as f32); 32];
+            match index.insert(&vec![id; 1], ann::Points::Values { vals: &point[..] }) {
                 Ok(res) => {
                     assert_eq!((), res);
                 }
@@ -373,7 +447,7 @@ mod tests {
                 }
             }
         }
-        let point_search = vec![0.4; 31];
+        let point_search = vec![0.4; 32];
         match index.search(&point_search, 1) {
             Ok(res) => {
                 let result: Vec<ann::EId> = res.iter().map(|x| (x.eid)).collect();
@@ -395,7 +469,7 @@ mod tests {
             let mut id = [0u8; 16];
             id[0] = i;
             let point = vec![100.0 * (i as f32); 128];
-            match index.insert(id, &point[..]) {
+            match index.insert(&vec![id; 1], ann::Points::QuantizerIn { vals: &point[..] }) {
                 Ok(res) => {
                     assert_eq!((), res);
                 }

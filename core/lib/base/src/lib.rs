@@ -1,5 +1,6 @@
 #![feature(stdsimd)]
 #![feature(is_sorted)]
+#![feature(vec_push_within_capacity)]
 #![cfg_attr(target_arch = "wasm32", feature(simd_wasm64))]
 
 pub mod ann;
@@ -10,6 +11,7 @@ pub mod flat;
 pub mod metric;
 mod nn_query_scratch;
 mod nn_queue;
+pub mod scalar_quantizer;
 // mod diskannv1_test;
 
 #[cfg(target_arch = "wasm32")]

@@ -16,6 +16,7 @@ rayon = "1.6.1"
 roaring = "0.10.1"
 serde = "1.0.152"
 sorted-vec = "0.8.2"
+tdigest = "0.2.3"
 wasm-bindgen-test = "0.3.34"
 
 [workspace]

@@ -39,6 +39,8 @@ pub trait ElementVal:
     + std::ops::AddAssign
     + num::ToPrimitive
     + num::FromPrimitive
+    + Sized
+    + std::fmt::Debug
 {
     type Native;
 }
@@ -53,6 +55,11 @@ impl ElementVal for u8 {
     type Native = u8;
 }
 
+pub enum Points<'a, T> {
+    QuantizerIn { vals: &'a [f32] },
+    Values { vals: &'a [T] },
+}
+
 // primary trait that enables an obj to act as an ANNIndex - this
 // allows us to use multiple different backends in the future.
 pub trait ANNIndex {
@@ -60,9 +67,11 @@ pub trait ANNIndex {
     fn new(params: &ANNParams) -> anyhow::Result<Self>
     where
         Self: Sized;
-    fn insert(&self, eids: &[EId], data: &[Self::Val]) -> anyhow::Result<()>;
+    fn insert_with_f32(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()>;
+    fn insert(&self, eids: &[EId], data: Points<Self::Val>) -> anyhow::Result<()>;
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()>;
     fn search(&self, q: &[Self::Val], k: usize) -> anyhow::Result<Vec<Node>>;
+    // fn search_fr_f32(&self, eids: &[EId], data: &[f32])
     fn save(&self) -> anyhow::Result<()>;
 }
 

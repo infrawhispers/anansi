@@ -88,8 +88,11 @@ where
         };
         DiskANNV1Index::new(diskann_params)
     }
-    fn insert(&self, eids: &[EId], data: &[TVal]) -> anyhow::Result<()> {
+    fn insert(&self, eids: &[EId], data: ann::Points<TVal>) -> anyhow::Result<()> {
         self.insert(eids, data)
+    }
+    fn insert_with_f32(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
+        unimplemented!()
     }
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()> {
         self.delete(eids)
@@ -948,7 +951,15 @@ where
         println!("consolidate_delete time: {:?}", start.elapsed());
     }
 
-    fn insert(&self, eids: &[EId], data: &[TVal]) -> anyhow::Result<()> {
+    fn insert(&self, eids: &[EId], p: ann::Points<TVal>) -> anyhow::Result<()> {
+        let data: &[TVal];
+        match p {
+            ann::Points::QuantizerIn { vals } => {
+                unreachable!("incorrect params passed for construction")
+            }
+            ann::Points::Values { vals } => data = vals,
+        }
+
         // we assume everything is good!
         {
             let params_r = self.params.read();
@@ -967,28 +978,28 @@ where
             "could not get enough vids to map to the eid database",
         );
         let data_processed;
-        // let mut preprocess_scratch: Vec<TVal>;
+        let mut preprocess_scratch: Vec<TVal>;
 
-        // if TMetric::uses_preprocessor() {
-        //     let params_r = self.params.read();
-        //     preprocess_scratch = vec![Default::default(); data.len()];
-        //     for idx in 0..vids.len() {
-        //         let idx_s_fr = idx * params_r.aligned_dim;
-        //         let idx_e_fr = idx_s_fr + params_r.aligned_dim;
-        //         match TMetric::pre_process(&data[idx_s_fr..idx_e_fr]) {
-        //             Some(vec) => {
-        //                 preprocess_scratch[idx_s_fr..idx_e_fr].copy_from_slice(&vec[0..vec.len()]);
-        //             }
-        //             None => {
-        //                 preprocess_scratch[idx_s_fr..idx_e_fr]
-        //                     .copy_from_slice(&data[idx_s_fr..idx_e_fr]);
-        //             }
-        //         }
-        //     }
-        //     data_processed = &preprocess_scratch[0..preprocess_scratch.len()];
-        // } else {
-        data_processed = data;
-        // }
+        if TMetric::uses_preprocessor() {
+            let params_r = self.params.read();
+            preprocess_scratch = vec![Default::default(); data.len()];
+            for idx in 0..vids.len() {
+                let idx_s_fr = idx * params_r.aligned_dim;
+                let idx_e_fr = idx_s_fr + params_r.aligned_dim;
+                match TMetric::pre_process(&data[idx_s_fr..idx_e_fr]) {
+                    Some(vec) => {
+                        preprocess_scratch[idx_s_fr..idx_e_fr].copy_from_slice(&vec[0..vec.len()]);
+                    }
+                    None => {
+                        preprocess_scratch[idx_s_fr..idx_e_fr]
+                            .copy_from_slice(&data[idx_s_fr..idx_e_fr]);
+                    }
+                }
+            }
+            data_processed = &preprocess_scratch[0..preprocess_scratch.len()];
+        } else {
+            data_processed = data;
+        }
         {
             // hold the lock and plop the data into our datastore - switching
             // to segments should allow us to not block _all_ readers during

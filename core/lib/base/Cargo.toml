@@ -19,3 +19,4 @@ crossbeam-channel = "0.5.7"
 rand = "0.8.5"
 num = "0.4.0"
 getrandom = { version = "0.2.8", features = ["js"] }
+tdigest = "0.2.3"

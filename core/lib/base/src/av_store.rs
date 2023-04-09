@@ -40,9 +40,10 @@ impl<T: Num + std::marker::Copy> AlignedDataStore<T> {
     pub fn new(total_internal_points: usize, aligned_dim: usize) -> AlignedDataStore<T> {
         let mut data_vec: Vec<T>;
         unsafe {
-            // we store floats so we always multiple by 4
-            // TODO(infrawhispers) - make this configurable if we end up using ints
-            data_vec = AlignedDataStore::<T>::aligned_vec(total_internal_points * aligned_dim * 4);
+            // n_bytes: total_points * aligned_dim * [size_of(float) | size_of(uint8)]
+            data_vec = AlignedDataStore::<T>::aligned_vec(
+                total_internal_points * aligned_dim * std::mem::size_of::<T>(),
+            );
             data_vec.set_len(total_internal_points * aligned_dim);
         }
         return AlignedDataStore {

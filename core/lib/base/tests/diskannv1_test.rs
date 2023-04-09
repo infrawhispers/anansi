@@ -156,7 +156,14 @@ mod test {
             maintain_arc.maintain();
         });
         assert!(
-            ann_idx.insert(&eids, &base_vectors).is_ok(),
+            ann_idx
+                .insert(
+                    &eids,
+                    base::ann::Points::Values {
+                        vals: &base_vectors
+                    }
+                )
+                .is_ok(),
             "unexpexted err on batch_insert to the vector store"
         );
         for i in 0..10 {
@@ -257,7 +264,14 @@ mod test {
         });
 
         assert!(
-            ann_idx.insert(&eids, &base_vectors).is_ok(),
+            ann_idx
+                .insert(
+                    &eids,
+                    ann::Points::Values {
+                        vals: &base_vectors
+                    }
+                )
+                .is_ok(),
             "unexpexted err on batch_insert to the vector store"
         );
         let mut total_intersection_count: usize = 0;
