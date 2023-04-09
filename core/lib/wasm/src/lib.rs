@@ -45,7 +45,7 @@ pub struct WNode {
 #[wasm_bindgen]
 pub struct Index {
     // num_points: i32
-    index: DiskANNV1Index<base::metric::MetricCosine>,
+    index: DiskANNV1Index<base::metric::MetricCosine, f32>,
 }
 
 #[wasm_bindgen]
@@ -112,7 +112,7 @@ impl Index {
     }
 
     pub fn search(&self, q: &[f32], k: usize) -> Result<Array, JsError> {
-        match self.index.search(q, k) {
+        match self.index.search(base::ann::Points::Values { vals: q }, k) {
             Ok(nns) => {
                 return self.nodes_to_js(nns);
             }
@@ -139,7 +139,10 @@ impl Index {
     pub fn insert(&self, eids: js_sys::Array, data: &[f32]) -> Result<(), JsError> {
         let eids_internal = self.array_to_eids(eids)?;
         console_log!("[anansi-core] rust: running the insertion");
-        match self.index.insert(&eids_internal, data) {
+        match self
+            .index
+            .insert(&eids_internal, base::ann::Points::Values { vals: data })
+        {
             Ok(()) => return Ok(()),
             Err(err) => {
                 console_log!("{}", err);
