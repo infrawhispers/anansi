@@ -138,14 +138,14 @@ impl Index {
 
     pub fn insert(&self, eids: js_sys::Array, data: &[f32]) -> Result<(), JsError> {
         let eids_internal = self.array_to_eids(eids)?;
-        console_log!("[anansi-core] rust: running the insertion");
+        // console_log!("[anansi-core] rust: running the insertion");
         match self
             .index
             .insert(&eids_internal, base::ann::Points::Values { vals: data })
         {
             Ok(()) => return Ok(()),
             Err(err) => {
-                console_log!("{}", err);
+                // console_log!("{}", err);
                 return Err(JsError::new(
                     &format!("unable to insert vector: {}", err).to_string(),
                 ));
