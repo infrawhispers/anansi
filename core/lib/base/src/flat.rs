@@ -52,11 +52,6 @@ where
         FlatIndex::new(flat_params)
     }
 
-    fn insert_with_f32(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
-        unimplemented!()
-        // self.quantize()
-    }
-
     fn insert(&self, eids: &[EId], points: ann::Points<TVal>) -> anyhow::Result<()> {
         self.insert(eids, points)
     }

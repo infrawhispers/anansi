@@ -68,7 +68,6 @@ pub trait ANNIndex {
     fn new(params: &ANNParams) -> anyhow::Result<Self>
     where
         Self: Sized;
-    fn insert_with_f32(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()>;
     fn insert(&self, eids: &[EId], data: Points<Self::Val>) -> anyhow::Result<()>;
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()>;
     fn search(&self, q: &[Self::Val], k: usize) -> anyhow::Result<Vec<Node>>;

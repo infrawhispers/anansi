@@ -91,9 +91,6 @@ where
     fn insert(&self, eids: &[EId], data: ann::Points<TVal>) -> anyhow::Result<()> {
         self.insert(eids, data)
     }
-    fn insert_with_f32(&self, eids: &[EId], data: &[f32]) -> anyhow::Result<()> {
-        unimplemented!()
-    }
     fn delete(&self, eids: &[EId]) -> anyhow::Result<()> {
         self.delete(eids)
     }
