@@ -1,0 +1,54 @@
+syntax = "proto3";
+package api;
+
+message InitializeModelRequest {
+  EncodingModel model = 1;
+  uint32 num_threads = 2;
+  repeated EncodingModelDevice devices = 3;
+}
+
+enum EncodingModelDevice {
+  MD_UNKNOWN = 0;
+  MD_CPU = 1;
+  MD_CUDA = 2;
+  MD_TENSOR = 3;
+}
+
+message InitializeModelResponse {}
+
+enum EncodingModel {
+  M_UNKNOWN = 0;
+  // instructor models
+  M_INSTRUCTOR = 1;
+  // clip models
+  M_CLIP_RN50_OPENAI = 2;
+  M_CLIP_RN50_YFCC15M = 3;
+  M_CLIP_RN50_CC12M = 4;
+  M_CLIP_RN101_OPENAI = 5;
+  M_CLIP_RN101_YFCC15M = 6;
+  M_CLIP_RN50x4_OPENAI = 7;
+  M_CLIP_RN50x16_OPENAI = 8;
+  M_CLIP_RN50x64_OPENAI = 9;
+}
+
+message EncodeItem {
+  EncodingModel model = 1;
+  repeated string text = 2;
+  repeated string instructions = 3;
+  repeated bytes image = 4;
+  repeated string image_uri = 5;
+}
+message EncodeRequest {
+  repeated EncodeItem data = 1;
+  string name = 2;
+}
+message EncodeResult {
+  string err_message = 1;
+  repeated float embedding = 2;
+}
+message EncodeResponse { repeated EncodeResult results = 1; }
+
+service Api {
+  rpc Encode(EncodeRequest) returns (EncodeResponse);
+  rpc InitializeModel(InitializeModelRequest) returns (InitializeModelResponse);
+}
