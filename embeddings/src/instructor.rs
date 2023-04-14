@@ -30,20 +30,7 @@ impl Embedder for InstructorEmbedder {
                 unreachable!("incorrect params passed for construction")
             }
         };
-        if req_instructor.text.len() != req_instructor.instructions.len() {
-            bail!(
-                "text.len: {} != instructions.len: {}",
-                req_instructor.text.len(),
-                req_instructor.instructions.len()
-            )
-        }
         self.encode(req_instructor.instructions, req_instructor.text)
-        // let mut res = Vec::with_capacity(req_instructor.text.len());
-        // for i in 0..req_instructor.text.len() {
-        //     let intermed = self.encode(&req_instructor.instructions[i], &req_instructor.text[i])?;
-        //     res.push(intermed)
-        // }
-        // Ok(res)
     }
 }
 
@@ -99,6 +86,14 @@ impl InstructorEmbedder {
     }
 
     fn encode(&self, instructions: &[String], text: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+        if instructions.len() != text.len() {
+            bail!(
+                "text.len != instructions.len - ({} != {})",
+                text.len(),
+                instructions.len()
+            )
+        }
+
         let (mut max_a, mut max_b, mut max_c) = (0, 0, 0);
         let mut all_a: Vec<Array<i64, Dim<[usize; 2]>>> = Vec::new();
         let mut all_b: Vec<Array<i64, Dim<[usize; 2]>>> = Vec::new();

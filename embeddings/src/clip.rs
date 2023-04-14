@@ -1,19 +1,21 @@
-use anyhow::bail;
-use tokio::runtime::Runtime;
+use std::fs;
+use std::path::Path;
+use std::sync::Arc;
 
-use crate::embedder;
-use crate::embedder::Embedder;
-use crate::utils::download_model;
+use anyhow::bail;
 use ndarray::{Array, ArrayView};
 use ort::{
     environment::Environment, tensor::DynOrtTensor, tensor::FromArray, tensor::InputTensor,
     tensor::OrtOwnedTensor, ExecutionProvider, GraphOptimizationLevel, Session, SessionBuilder,
 };
 use phf::phf_map;
-use std::fs;
-use std::path::Path;
-use std::sync::Arc;
+use tokio::runtime::Runtime;
+
 use tokenizers::tokenizer::Tokenizer;
+
+use crate::embedder;
+use crate::embedder::Embedder;
+use crate::utils::download_model;
 
 pub struct CLIPEmbedder {
     session_visual: Session,

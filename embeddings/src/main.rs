@@ -1,8 +1,8 @@
-use anyhow::bail;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::available_parallelism;
 
+use anyhow::bail;
 use ort::ExecutionProvider;
 use tokio::task;
 use tonic::{transport::Server, Code, Request, Response, Status};
@@ -11,7 +11,6 @@ use api::api_server::{Api, ApiServer};
 use api::{
     EncodeItem, EncodeRequest, EncodeResponse, EncodeResult, EncodingModel, EncodingModelDevice,
 };
-
 use embeddings::embedder;
 use embeddings::embedder::{CLIPParams, InstructorParams};
 use embeddings::embedder_manager;

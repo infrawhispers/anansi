@@ -1,22 +1,20 @@
 use std::fs;
+use std::fs::File;
+use std::fs::OpenOptions;
+use std::io::BufReader;
+use std::io::Read;
 use std::path::Path;
 
 use anyhow::bail;
 use futures::StreamExt;
 use md5::{Digest, Md5};
 use reqwest::header::HeaderMap;
-
-use std::fs::File;
-use std::fs::OpenOptions;
-use std::io::BufReader;
-use std::io::Read;
-use tracing::info;
-
 use tokio::fs::File as tkFile;
 use tokio::fs::OpenOptions as tkOpenOptions;
 use tokio::io as tkio;
 use tokio::io::AsyncReadExt;
 use tokio::io::BufReader as tkBufReader;
+use tracing::info;
 
 fn get_md5_sync(file_path: &Path) -> anyhow::Result<String> {
     let f = OpenOptions::new().read(true).open(file_path)?;
