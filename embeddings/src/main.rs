@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::thread::available_parallelism;
 
 use anyhow::bail;
+use futures::future::join_all;
 use ort::ExecutionProvider;
 use tokio::task;
 use tonic::{transport::Server, Code, Request, Response, Status};
@@ -10,6 +11,7 @@ use tonic::{transport::Server, Code, Request, Response, Status};
 use api::api_server::{Api, ApiServer};
 use api::{
     EncodeItem, EncodeRequest, EncodeResponse, EncodeResult, EncodingModel, EncodingModelDevice,
+    ModelInitResult, ModelSettings,
 };
 use embeddings::embedder;
 use embeddings::embedder::{CLIPParams, InstructorParams};
@@ -35,6 +37,50 @@ impl ApiServerImpl {
 }
 
 impl ApiServerImpl {
+    async fn init_model(&self, m: &ModelSettings) -> anyhow::Result<()> {
+        let model_name;
+        match EncodingModel::from_i32(m.model_name) {
+            Some(val) => model_name = val,
+            None => {
+                bail!("unknown model: {}", m.model_name)
+            }
+        }
+        let num_threads: u32;
+        if m.num_threads == 0 {
+            num_threads = available_parallelism()?.get() as u32;
+        } else {
+            num_threads = m.num_threads
+        }
+
+        // let providers: Vec<ExecutionProvider>;
+        // match self.to_execution_providers(req.devices) {
+        //     Ok(p) => providers = p,
+        //     Err(err) => {
+        //         return Err(Status::new(
+        //             Code::InvalidArgument,
+        //             format!("unable to match execution_provider, reason: {}", err),
+        //         ));
+        //     }
+        // }
+
+        let mgr = self.mgr.clone();
+        let t = task::spawn_blocking(move || {
+            mgr.initialize_model(model_name.as_str_name(), num_threads, Vec::new())
+        });
+        // let res;
+        match t.await {
+            Ok(r) => match r {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    bail!("err while attemping to initialize model: {}", err)
+                }
+            },
+            Err(err) => {
+                bail!("err while attemping to initialize model: {}", err)
+            }
+        }
+    }
+
     fn to_execution_providers(&self, devices: Vec<i32>) -> anyhow::Result<Vec<ExecutionProvider>> {
         let mut res: Vec<ExecutionProvider> = Vec::with_capacity(devices.len());
         for i in 0..devices.len() {
@@ -105,6 +151,7 @@ impl ApiServerImpl {
                 | EncodingModel::MClipRn101Yfcc15m
                 | EncodingModel::MClipRn50x4Openai
                 | EncodingModel::MClipRn50x16Openai
+                | EncodingModel::MClipVitL14336Openai
                 | EncodingModel::MClipRn50x64Openai => {
                     if data[i].text.len() != 0 {
                         req.push((
@@ -155,57 +202,24 @@ impl Api for ApiServerImpl {
         request: Request<api::InitializeModelRequest>,
     ) -> Result<Response<api::InitializeModelResponse>, Status> {
         let mut req = request.into_inner();
-        let m: EncodingModel;
-        match EncodingModel::from_i32(req.model) {
-            Some(val) => m = val,
-            None => {
-                return Err(Status::new(
-                    Code::InvalidArgument,
-                    format!("unknown model: {}", req.model),
-                ));
+        let mut results: Vec<ModelInitResult> = Vec::new();
+        for idx in 0..req.models.len() {
+            let m = &req.models[idx];
+            match self.init_model(m).await {
+                Ok(()) => results.push(ModelInitResult {
+                    err_message: "".to_string(),
+                    initialized: true,
+                    model_name: m.model_name,
+                }),
+                Err(err) => results.push(ModelInitResult {
+                    err_message: format!("unable to init: {}", err),
+                    initialized: false,
+                    model_name: m.model_name,
+                }),
             }
         }
-        if req.num_threads == 0 {
-            req.num_threads = available_parallelism()?.get() as u32;
-        }
-        let providers: Vec<ExecutionProvider>;
-        match self.to_execution_providers(req.devices) {
-            Ok(p) => providers = p,
-            Err(err) => {
-                return Err(Status::new(
-                    Code::InvalidArgument,
-                    format!("unable to match execution_provider, reason: {}", err),
-                ));
-            }
-        }
-        let mgr = self.mgr.clone();
-        let t = task::spawn_blocking(move || {
-            mgr.initialize_model(m.as_str_name(), req.num_threads, providers)
-        });
-        let res;
-        match t.await {
-            Ok(r) => {
-                res = r;
-            }
-            Err(err) => {
-                return Err(Status::new(
-                    Code::Internal,
-                    format!("unable to match execution_provider, reason: {}", err),
-                ));
-            }
-        }
-        match res {
-            Ok(()) => {
-                let resp = api::InitializeModelResponse {};
-                return Ok(Response::new(resp));
-            }
-            Err(err) => {
-                return Err(Status::new(
-                    Code::Internal,
-                    format!("unable to create the embedder, reason: {}", err),
-                ))
-            }
-        }
+        let resp = api::InitializeModelResponse { results: results };
+        return Ok(Response::new(resp));
     }
 
     async fn encode(
@@ -264,7 +278,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(err) => panic!("unable to create the apiserver: reason: {}", err),
     }
-    // let apiserver = ApiServerImpl::new(&model_dir);
 
     Server::builder()
         .add_service(ApiServer::new(apiserver))

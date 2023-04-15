@@ -1,5 +1,7 @@
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
+
 use std::sync::Arc;
 
 use anyhow::bail;
@@ -15,7 +17,7 @@ use tokenizers::tokenizer::Tokenizer;
 
 use crate::embedder;
 use crate::embedder::Embedder;
-use crate::utils::download_model;
+use crate::utils::download_model_sync;
 
 pub struct CLIPEmbedder {
     session_visual: Session,
@@ -32,24 +34,30 @@ struct CLIPModel {
 }
 static S3_BUCKET_V2: &'static str = "https://clip-as-service.s3.us-east-2.amazonaws.com/models-436c69702d61732d53657276696365/onnx/";
 static CLIP_MODELS: phf::Map<&'static str, CLIPModel> = phf_map! {
-    "RN50::openai" => CLIPModel{
+    "RN50_OPENAI" => CLIPModel{
         textual: "RN50/textual.onnx",
         textual_hash:"722418bfe47a1f5c79d1f44884bb3103",
         visual: "RN50/visual.onnx",
         visual_hash: "5761475db01c3abb68a5a805662dcd10",
     },
-    "RN50::yfcc15m" => CLIPModel{
+    "RN50_YFCC15M" => CLIPModel{
         textual: "RN50-yfcc15m/textual.onnx",
         textual_hash: "4ff2ea7228b9d2337b5440d1955c2108",
         visual: "RN50-yfcc15m/visual.onnx",
         visual_hash: "87daa9b4a67449b5390a9a73b8c15772"
     },
-    "RN50::cc12m" => CLIPModel{
+    "RN50_CC12M" => CLIPModel{
         textual: "RN50-cc12m/textual.onnx",
         textual_hash: "78fa0ae0ea47aca4b8864f709c48dcec",
         visual: "RN50-cc12m/visual.onnx",
         visual_hash: "0e04bf92f3c181deea2944e322ebee77",
-    }
+    },
+    "CLIP_VIT_L_14_336_OPENAI" => CLIPModel {
+        textual: "ViT-L-14@336px/textual.onnx",
+        textual_hash: "78fab479f136403eed0db46f3e9e7ed2",
+        visual: "ViT-L-14@336px/visual.onnx",
+        visual_hash: "f3b1f5d55ca08d43d749e11f7e4ba27e",
+    },
 };
 
 impl Embedder for CLIPEmbedder {
@@ -132,62 +140,49 @@ impl CLIPEmbedder {
         Ok(result)
     }
     pub fn new(params: &embedder::EmbedderParams) -> anyhow::Result<Self> {
-        let model_name = "LIAM";
         let model_details: CLIPModel;
-        match CLIP_MODELS.get(model_name) {
+        match CLIP_MODELS.get(params.model_name) {
             Some(m) => model_details = *m,
             None => {
                 bail!(
                     "CLIP model: {} was not found; below is a list of all available models...",
-                    model_name
+                    params.model_name
                 );
             }
         };
-        let cache_dir_str = format!(
-            ".cache/clip/{}",
-            model_name.clone().replace("/", "-").replace("::", "-")
-        );
-        let cache_dir = Path::new(&cache_dir_str);
-        let cache_dir_exists: bool = cache_dir.is_dir();
-        let textual_file = cache_dir.join("textual.onnx");
-        let visual_file = cache_dir.join("visual.onnx");
-        if !cache_dir_exists {
-            fs::create_dir_all(cache_dir)?;
+        if !params.model_path.exists() {
+            fs::create_dir_all(params.model_path)?;
         }
-        let runtime = Runtime::new().unwrap();
-        if !textual_file.exists() {
-            let dwn = runtime.block_on(download_model(
+        let text_model_fp = PathBuf::from(params.model_path).join("textual.onnx");
+        if !text_model_fp.exists() {
+            download_model_sync(
+                &format!("{}.{}", params.model_name, "textual.onnx"),
                 &format!("{}{}", S3_BUCKET_V2, model_details.textual),
                 true,
-                &cache_dir.join("textual.onnx"),
+                &text_model_fp,
                 model_details.textual_hash,
-            ));
-            dwn?
+            )?;
         }
-        if !visual_file.exists() {
-            let dwn = runtime.block_on(download_model(
+        let visual_model_fp = PathBuf::from(params.model_path).join("visual.onnx");
+        if !visual_model_fp.exists() {
+            download_model_sync(
+                &format!("{}.{}", params.model_name, "visual.onnx"),
                 &format!("{}{}", S3_BUCKET_V2, model_details.visual),
                 true,
-                &cache_dir.join("visual.onnx"),
+                &visual_model_fp,
                 model_details.visual_hash,
-            ));
-            dwn?
+            )?;
         }
-        let environment = Arc::new(
-            Environment::builder()
-                .with_name("anansi")
-                .with_execution_providers([ExecutionProvider::cuda()])
-                .build()?,
-        );
-        let session_textual = SessionBuilder::new(&environment)?
+        let session_textual = SessionBuilder::new(&params.ort_environment)?
             .with_optimization_level(GraphOptimizationLevel::Level1)?
-            .with_intra_threads(1)?
-            .with_model_from_file(textual_file)?;
-        let session_visual = SessionBuilder::new(&environment)?
+            .with_inter_threads(params.num_threads)?
+            .with_parallel_execution(true)?
+            .with_model_from_file(text_model_fp)?;
+        let session_visual = SessionBuilder::new(&params.ort_environment)?
             .with_optimization_level(GraphOptimizationLevel::Level1)?
-            .with_intra_threads(1)?
-            .with_model_from_file(visual_file)?;
-
+            .with_inter_threads(params.num_threads)?
+            .with_parallel_execution(true)?
+            .with_model_from_file(visual_model_fp)?;
         let tokenizer: Tokenizer;
         match Tokenizer::from_pretrained("openai/clip-vit-base-patch16", None) {
             Ok(tk) => tokenizer = tk,

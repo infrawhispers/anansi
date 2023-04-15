@@ -161,6 +161,7 @@ impl InstructorEmbedder {
         let model_file_path = PathBuf::from(params.model_path).join(model_name);
         if !model_file_path.exists() {
             download_model_sync(
+                model_name,
                 &format!("{}/instructor/{}", S3_BUCKET_URI, model_name),
                 true,
                 &model_file_path,

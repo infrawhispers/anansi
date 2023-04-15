@@ -2,7 +2,11 @@ syntax = "proto3";
 package api;
 
 message InitializeModelRequest {
-  EncodingModel model = 1;
+  repeated ModelSettings models = 1;
+}
+
+message ModelSettings {
+  EncodingModel model_name = 1;
   uint32 num_threads = 2;
   repeated EncodingModelDevice devices = 3;
 }
@@ -14,7 +18,14 @@ enum EncodingModelDevice {
   MD_TENSOR = 3;
 }
 
-message InitializeModelResponse {}
+message InitializeModelResponse {
+  repeated ModelInitResult results = 1;
+}
+message ModelInitResult {
+  EncodingModel model_name = 1;
+  bool initialized = 2;
+  string err_message = 3;
+}
 
 enum EncodingModel {
   M_UNKNOWN = 0;
@@ -29,6 +40,7 @@ enum EncodingModel {
   M_CLIP_RN50x4_OPENAI = 7;
   M_CLIP_RN50x16_OPENAI = 8;
   M_CLIP_RN50x64_OPENAI = 9;
+  M_CLIP_VIT_L_14_336_OPENAI = 10;
 }
 
 message EncodeItem {

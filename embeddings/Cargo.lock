@@ -574,6 +574,7 @@ dependencies = [
  "phf",
  "prost",
  "pyo3",
+ "rand",
  "reqwest",
  "tokenizers",
  "tokio",

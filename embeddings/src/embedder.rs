@@ -10,17 +10,20 @@ pub struct EmbedderParams<'a> {
     pub providers: &'a [ExecutionProvider],
     pub ort_environment: Arc<Environment>,
 }
+
 #[derive(Debug)]
 pub enum CLIPParams<'a> {
     Text { vals: &'a [String] },
     Uri { vals: &'a [String] },
     UriBytes { vals: &'a Vec<Vec<u8>> },
 }
+
 #[derive(Debug)]
 pub struct InstructorParams<'a> {
     pub text: &'a [String],
     pub instructions: &'a [String],
 }
+
 #[derive(Debug)]
 pub enum EmebeddingRequest<'a> {
     CLIPRequest { params: CLIPParams<'a> },
