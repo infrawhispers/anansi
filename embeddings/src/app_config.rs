@@ -1,15 +1,19 @@
-use anyhow::bail;
+use crate::api::{EncodingModel, ModelSettings};
+use crate::embedder_manager::ModelConfiguration;
+use anyhow::{anyhow, bail};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use yaml_rust::YamlLoader;
 
-use crate::embedder_manager::ModelConfiguration;
-
-pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelConfiguration>> {
+pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSettings>> {
     if !config_path.exists() {
-        return Ok(vec![ModelConfiguration {
-            model_name: "M_CLIP_VIT_L_14_336_OPENAI".to_string(),
+        return Ok(vec![ModelSettings {
+            model_name: EncodingModel::from_str_name("M_CLIP_VIT_L_14_336_OPENAI")
+                .ok_or(anyhow!(
+                    "model \"M_CLIP_VIT_L_14_336_OPENAI\" is not a valid enum"
+                ))?
+                .into(),
             num_threads: 4,
             devices: Vec::new(),
         }]);
@@ -18,7 +22,7 @@ pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelCo
     let mut buffer = String::new();
     f.read_to_string(&mut buffer)?;
     let docs = YamlLoader::load_from_str(&buffer)?;
-    let mut res: Vec<ModelConfiguration> = Vec::new();
+    let mut res: Vec<ModelSettings> = Vec::new();
     for idx_doc in 0..docs.len() {
         let doc = &docs[idx_doc];
         let models;
@@ -29,9 +33,21 @@ pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelCo
             }
         }
         for idx_model in 0..models.len() {
-            let mut config = ModelConfiguration::new();
+            let mut config = ModelSettings {
+                model_name: EncodingModel::from_str_name("M_CLIP_VIT_L_14_336_OPENAI")
+                    .ok_or(anyhow!(
+                        "model \"M_CLIP_VIT_L_14_336_OPENAI\" is not a valid enum"
+                    ))?
+                    .into(),
+                num_threads: 4,
+                devices: Vec::new(),
+            };
             match doc["models"][idx_model]["name"].as_str() {
-                Some(model_name) => config.model_name = model_name.to_string(),
+                Some(model_name) => {
+                    config.model_name = EncodingModel::from_str_name(model_name)
+                        .ok_or(anyhow!("model {} is not a valid enum", model_name))?
+                        .into();
+                }
                 None => {
                     bail!(
                         "[config] model at idx: {} is missing \"model_name\"",

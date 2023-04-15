@@ -13,14 +13,14 @@ path = "src/main.rs"
 [dependencies]
 tonic = "0.9"
 prost = "0.11"
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "fs"] }
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread", "fs", "signal"] }
 pyo3 = { version = "0.18.2", features = ["auto-initialize"]}
 tokenizers = "0.13.3"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "fmt"] }
 tracing = "0.1.37"
 anyhow = "1.0.70"
 ndarray = "0.15.1"
-ort = { version = "1.14.5", features = ["cuda"] }
+ort = { version = "1.14.5", features = ["cuda", "load-dynamic", "download-binaries"] }
 phf = { version = "0.11.1", features = ["macros"] }
 reqwest = { version = "0.11.16", features = ["blocking", "json", "stream"] }
 futures = "0.3.28"
@@ -36,6 +36,10 @@ clap = { version = "4.2.2", features = ["derive", "cargo"] }
 clap-port-flag = "0.4.0"
 tokio-stream = "0.1.12"
 yaml-rust = "0.4.5"
+tokio-util = "0.7.7"
 
 [build-dependencies]
 tonic-build = "0.9"
+
+[profile.release]
+rpath = true

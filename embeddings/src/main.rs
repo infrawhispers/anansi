@@ -2,29 +2,27 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::available_parallelism;
 
-use anyhow::bail;
+use anyhow::{anyhow, bail};
 use clap::{command, Parser};
 use clap_port_flag::Port;
 use ort::ExecutionProvider;
-use tokio::task;
+use tokio::signal::unix::SignalKind;
+use tokio::{signal, task};
 use tokio_stream::wrappers::TcpListenerStream;
+use tokio_util::sync::CancellationToken;
 use tonic::{transport::Server, Code, Request, Response, Status};
-use tracing::{info, Level};
+use tracing::{info, warn, Level};
 
-use api::api_server::{Api, ApiServer};
-use api::{
+use embeddings::api::api_server::{Api, ApiServer};
+use embeddings::api::{
     EncodeItem, EncodeRequest, EncodeResponse, EncodeResult, EncodingModel, EncodingModelDevice,
-    ModelInitResult, ModelSettings,
+    InitializeModelRequest, InitializeModelResponse, ModelInitResult, ModelSettings,
 };
 use embeddings::app_config;
 use embeddings::embedder;
 use embeddings::embedder::{CLIPParams, InstructorParams};
 use embeddings::embedder_manager;
 use embeddings::API_DESCRIPTOR_SET;
-
-pub mod api {
-    tonic::include_proto!("api"); // The string specified here must match the proto package name
-}
 
 #[derive(Debug, Parser)]
 #[clap(name = "embedder-managed", version = "0.1.0", author = "getanansi")]
@@ -217,8 +215,8 @@ impl ApiServerImpl {
 impl Api for ApiServerImpl {
     async fn initialize_model(
         &self,
-        request: Request<api::InitializeModelRequest>,
-    ) -> Result<Response<api::InitializeModelResponse>, Status> {
+        request: Request<InitializeModelRequest>,
+    ) -> Result<Response<InitializeModelResponse>, Status> {
         let req = request.into_inner();
         let mut results: Vec<ModelInitResult> = Vec::new();
         for idx in 0..req.models.len() {
@@ -236,7 +234,7 @@ impl Api for ApiServerImpl {
                 }),
             }
         }
-        let resp = api::InitializeModelResponse { results: results };
+        let resp = InitializeModelResponse { results: results };
         return Ok(Response::new(resp));
     }
 
@@ -264,7 +262,7 @@ impl Api for ApiServerImpl {
                 }),
             }
         });
-        let reply = api::EncodeResponse {
+        let reply = EncodeResponse {
             results: encoding_results,
         };
         Ok(Response::new(reply))
@@ -274,7 +272,10 @@ impl Api for ApiServerImpl {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = BinaryArgs::parse();
-    let model_configs: Vec<embedder_manager::ModelConfiguration>;
+
+    // STEP 1 - parse the model configs, iff a config.yaml was
+    // not specified then we default to M_CLIP_VIT_L_14_336_OPENAI
+    let model_configs: Vec<ModelSettings>;
     match app_config::fetch_initial_models(&args.config) {
         Ok(c) => model_configs = c,
         Err(err) => {
@@ -284,7 +285,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if model_configs.len() == 0 {
         panic!("at least 1 model should be specified, please check your config")
     }
-
     let subscriber = tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
         .finish();
@@ -297,26 +297,86 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let reflection_server = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(API_DESCRIPTOR_SET)
         .build()?;
-
+    // STEP 2 - attach to the specified hostname:port
     let listener = args.port.bind_or(50051)?;
     listener.set_nonblocking(true)?;
     let listener = tokio::net::TcpListener::from_std(listener)?;
     info!("listening at {:?}", listener.local_addr()?);
 
-    let model_dir = PathBuf::from("./cache");
+    // STEP 3 - ensure that our .cache folder for the models exists and create
+    // it if necessary - warn that we may not be able to load *new* models if
+    // the folder is not writable by us.
+    std::fs::create_dir_all(args.model_folder.clone())?;
+    let md = std::fs::metadata(args.model_folder.clone())?;
+    let permissions = md.permissions();
+    if permissions.readonly() {
+        warn!(
+            "folder: {:?} is readonly we will not be able to load *new* models",
+            args.model_folder
+        )
+    }
     let apiserver;
-    match ApiServerImpl::new(&model_dir) {
+    match ApiServerImpl::new(&args.model_folder) {
         Ok(server) => {
             apiserver = server;
         }
-        Err(err) => panic!("unable to create the apiserver: reason: {}", err),
+        Err(err) => panic!("unable to create the apiserver: {}", err),
     }
-
-    Server::builder()
+    // STEP 4 - initialize the models that should be preloaded on startup.
+    for idx in 0..model_configs.len() {
+        let cfg = &model_configs[idx];
+        let model_name = EncodingModel::from_i32(cfg.model_name)
+            .ok_or(anyhow!("model \"{}\" is not a valid enum", cfg.model_name))?
+            .as_str_name();
+        info!(model = model_name, "initializing model before startup");
+        match apiserver.init_model(&cfg).await {
+            Ok(()) => {
+                info!(
+                    model = model_name,
+                    "successfully initialized model at startup",
+                );
+            }
+            Err(err) => {
+                panic!(
+                    "could not intialize model: {} | err: {}",
+                    cfg.model_name, err
+                );
+            }
+        }
+    }
+    // Server::builder()
+    //     .add_service(ApiServer::new(apiserver))
+    //     .add_service(reflection_server)
+    //     .serve_with_incoming(TcpListenerStream::new(listener))
+    //     .await?;
+    let token = CancellationToken::new();
+    let cloned_token_1 = token.clone();
+    let cloned_token_2 = token.clone();
+    let grpc_server = Server::builder()
         .add_service(ApiServer::new(apiserver))
         .add_service(reflection_server)
-        .serve_with_incoming(TcpListenerStream::new(listener))
-        .await?;
+        .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async {
+            let _ = cloned_token_1.cancelled().await;
+            info!("gracefully shutting down server");
+        });
+    let mut terminate_await = tokio::signal::unix::signal(SignalKind::terminate()).unwrap();
+    tokio::spawn(async move {
+        tokio::select! {
+            _ = cloned_token_2.cancelled() => {}
+            _ = signal::ctrl_c() => {
+                info!("recieved SIGINT..exiting");
+                cloned_token_2.cancel();
+            }
+            _ =terminate_await.recv() => {
+                info!("recieved SIGTERM..exiting");
+                cloned_token_2.cancel();
+            }
+        }
+    });
+    // task2_handle.await;
+    grpc_server.await?;
+    info!("sever shutdown - exiting");
+    // task1_handle.await?;
     // let addr = "[::]:50051".parse()?;
     // also replace serve_with_incoming(..) with serve()
     Ok(())
