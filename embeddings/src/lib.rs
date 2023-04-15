@@ -1,3 +1,4 @@
+pub mod app_config;
 pub mod clip;
 pub mod embedder;
 pub mod embedder_manager;

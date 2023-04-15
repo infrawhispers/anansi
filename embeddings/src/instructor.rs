@@ -94,7 +94,7 @@ impl InstructorEmbedder {
             )
         }
 
-        let (mut max_a, mut max_b, mut max_c) = (0, 0, 0);
+        let (mut max_a, mut max_b) = (0, 0);
         let mut all_a: Vec<Array<i64, Dim<[usize; 2]>>> = Vec::new();
         let mut all_b: Vec<Array<i64, Dim<[usize; 2]>>> = Vec::new();
         let mut all_c: Vec<Array1<i64>> = Vec::new();
@@ -103,7 +103,6 @@ impl InstructorEmbedder {
 
             max_a = max(max_a, a.len());
             max_b = max(max_b, b.len());
-            max_c = max(max_c, c.len());
 
             all_a.push(a);
             all_b.push(b);
@@ -116,7 +115,6 @@ impl InstructorEmbedder {
 
             max_a = max(max_a, a.len());
             max_b = max(max_b, b.len());
-            max_c = max(max_c, c.len());
 
             all_a.push(a);
             all_b.push(b);

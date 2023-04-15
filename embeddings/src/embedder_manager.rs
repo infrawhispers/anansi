@@ -7,7 +7,7 @@ use anyhow::bail;
 use ort::{environment::Environment, ExecutionProvider};
 use parking_lot::RwLock;
 use rand::seq::SliceRandom;
-use tracing::{error, info};
+use tracing::info;
 
 use crate::clip;
 use crate::embedder;
@@ -25,6 +25,23 @@ pub struct EmbedderManager {
     models: Arc<RwLock<HashMap<String, Vec<Arc<dyn embedder::Embedder>>>>>,
     ort_environment: Arc<Environment>,
     model_path: PathBuf,
+}
+
+#[derive(Debug)]
+pub struct ModelConfiguration {
+    pub model_name: String,
+    pub num_threads: u32,
+    pub devices: Vec<ExecutionProvider>,
+}
+
+impl ModelConfiguration {
+    pub fn new() -> Self {
+        ModelConfiguration {
+            model_name: "".to_string(),
+            num_threads: 2,
+            devices: Vec::new(),
+        }
+    }
 }
 
 impl EmbedderManager {
@@ -92,12 +109,12 @@ impl EmbedderManager {
         }
         let mut m_map = self.models.write();
         match m_map.get_mut(model_identifier) {
-            Some(mq) => {
+            Some(mv) => {
                 info!(
                     model = model_identifier,
                     "adding embedder to existing queue"
                 );
-                mq.push((m));
+                mv.push(m);
             }
             None => {
                 info!(model = model_identifier, "creating new model queue");

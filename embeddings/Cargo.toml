@@ -5,8 +5,8 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[[bin]] # Bin to run the HelloWorld gRPC server
-name = "managed-server"
+[[bin]]
+name = "embedding-server"
 path = "src/main.rs"
 
 
@@ -32,6 +32,10 @@ parking_lot = "0.12.1"
 crossbeam = { version = "0.8.2", features = ["crossbeam-channel"] }
 crossbeam-channel = "0.5.8"
 rand = "0.8.5"
+clap = { version = "4.2.2", features = ["derive", "cargo"] }
+clap-port-flag = "0.4.0"
+tokio-stream = "0.1.12"
+yaml-rust = "0.4.5"
 
 [build-dependencies]
 tonic-build = "0.9"

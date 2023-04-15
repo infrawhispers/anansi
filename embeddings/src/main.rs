@@ -3,24 +3,41 @@ use std::sync::Arc;
 use std::thread::available_parallelism;
 
 use anyhow::bail;
-use futures::future::join_all;
+use clap::{command, Parser};
+use clap_port_flag::Port;
 use ort::ExecutionProvider;
 use tokio::task;
+use tokio_stream::wrappers::TcpListenerStream;
 use tonic::{transport::Server, Code, Request, Response, Status};
+use tracing::{info, Level};
 
 use api::api_server::{Api, ApiServer};
 use api::{
     EncodeItem, EncodeRequest, EncodeResponse, EncodeResult, EncodingModel, EncodingModelDevice,
     ModelInitResult, ModelSettings,
 };
+use embeddings::app_config;
 use embeddings::embedder;
 use embeddings::embedder::{CLIPParams, InstructorParams};
 use embeddings::embedder_manager;
 use embeddings::API_DESCRIPTOR_SET;
-use tracing::Level;
 
 pub mod api {
     tonic::include_proto!("api"); // The string specified here must match the proto package name
+}
+
+#[derive(Debug, Parser)]
+#[clap(name = "embedder-managed", version = "0.1.0", author = "getanansi")]
+#[command(author, version, about, long_about = None)]
+pub struct BinaryArgs {
+    #[clap(flatten)]
+    port: Port,
+    /// configuration for the embedding models to be loaded on startup.
+    #[clap(long, short = 'c', default_value = "config.yml")]
+    config: PathBuf,
+    /// folder in which embedding models will be downloaded and cached.
+    #[clap(long, short = 'f', default_value = ".cache")]
+    model_folder: PathBuf,
 }
 
 pub struct ApiServerImpl {
@@ -81,6 +98,7 @@ impl ApiServerImpl {
         }
     }
 
+    #[allow(dead_code)]
     fn to_execution_providers(&self, devices: Vec<i32>) -> anyhow::Result<Vec<ExecutionProvider>> {
         let mut res: Vec<ExecutionProvider> = Vec::with_capacity(devices.len());
         for i in 0..devices.len() {
@@ -201,7 +219,7 @@ impl Api for ApiServerImpl {
         &self,
         request: Request<api::InitializeModelRequest>,
     ) -> Result<Response<api::InitializeModelResponse>, Status> {
-        let mut req = request.into_inner();
+        let req = request.into_inner();
         let mut results: Vec<ModelInitResult> = Vec::new();
         for idx in 0..req.models.len() {
             let m = &req.models[idx];
@@ -255,6 +273,18 @@ impl Api for ApiServerImpl {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = BinaryArgs::parse();
+    let model_configs: Vec<embedder_manager::ModelConfiguration>;
+    match app_config::fetch_initial_models(&args.config) {
+        Ok(c) => model_configs = c,
+        Err(err) => {
+            panic!("unable to create the model_configs: {}", err);
+        }
+    }
+    if model_configs.len() == 0 {
+        panic!("at least 1 model should be specified, please check your config")
+    }
+
     let subscriber = tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
         .finish();
@@ -264,12 +294,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             panic!("unable to create the tracing subscriber: {}", err)
         }
     }
-
     let reflection_server = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(API_DESCRIPTOR_SET)
         .build()?;
 
-    let addr = "[::]:50051".parse()?;
+    let listener = args.port.bind_or(50051)?;
+    listener.set_nonblocking(true)?;
+    let listener = tokio::net::TcpListener::from_std(listener)?;
+    info!("listening at {:?}", listener.local_addr()?);
+
     let model_dir = PathBuf::from("./cache");
     let apiserver;
     match ApiServerImpl::new(&model_dir) {
@@ -282,8 +315,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Server::builder()
         .add_service(ApiServer::new(apiserver))
         .add_service(reflection_server)
-        .serve(addr)
+        .serve_with_incoming(TcpListenerStream::new(listener))
         .await?;
-
+    // let addr = "[::]:50051".parse()?;
+    // also replace serve_with_incoming(..) with serve()
     Ok(())
 }

@@ -1,18 +1,13 @@
 use std::fs;
-use std::path::Path;
 use std::path::PathBuf;
-
-use std::sync::Arc;
 
 use anyhow::bail;
 use ndarray::{Array, ArrayView};
 use ort::{
-    environment::Environment, tensor::DynOrtTensor, tensor::FromArray, tensor::InputTensor,
-    tensor::OrtOwnedTensor, ExecutionProvider, GraphOptimizationLevel, Session, SessionBuilder,
+    tensor::DynOrtTensor, tensor::FromArray, tensor::InputTensor, tensor::OrtOwnedTensor,
+    GraphOptimizationLevel, Session, SessionBuilder,
 };
 use phf::phf_map;
-use tokio::runtime::Runtime;
-
 use tokenizers::tokenizer::Tokenizer;
 
 use crate::embedder;
@@ -20,6 +15,7 @@ use crate::embedder::Embedder;
 use crate::utils::download_model_sync;
 
 pub struct CLIPEmbedder {
+    #[allow(dead_code)]
     session_visual: Session,
     session_textual: Session,
     tokenizer: Tokenizer,
@@ -80,10 +76,10 @@ impl Embedder for CLIPEmbedder {
                 }
                 return Ok(res);
             }
-            embedder::CLIPParams::Uri { vals } => {
+            embedder::CLIPParams::Uri { vals: _ } => {
                 bail!("this is not implemented as yet...")
             }
-            embedder::CLIPParams::UriBytes { vals } => {
+            embedder::CLIPParams::UriBytes { vals: _ } => {
                 bail!("this is not implemented as yet...")
             }
         }

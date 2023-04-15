@@ -14,7 +14,6 @@ use tokio::fs::OpenOptions as tkOpenOptions;
 use tokio::io as tkio;
 use tokio::io::AsyncReadExt;
 use tokio::io::BufReader as tkBufReader;
-use tracing::field;
 use tracing::info;
 
 fn get_md5_sync(file_path: &Path) -> anyhow::Result<String> {
