@@ -93,6 +93,7 @@ impl EmbedderManager {
                 let mut path = self.model_path.clone();
                 path.push("clip");
                 path.push(model_identifier);
+                info!("creating model: ");
                 let embedder: clip::CLIPEmbedder =
                     clip::CLIPEmbedder::new(&embedder::EmbedderParams {
                         model_path: path.as_path(),

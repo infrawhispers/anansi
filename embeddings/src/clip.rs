@@ -9,6 +9,7 @@ use ort::{
 };
 use phf::phf_map;
 use tokenizers::tokenizer::Tokenizer;
+use tracing::info;
 
 use crate::embedder;
 use crate::embedder::Embedder;
@@ -151,6 +152,7 @@ impl CLIPEmbedder {
         }
         let text_model_fp = PathBuf::from(params.model_path).join("textual.onnx");
         if !text_model_fp.exists() {
+            info!(model=params.model_name, "textual.onnx does not exist, downloading from remote");
             download_model_sync(
                 &format!("{}.{}", params.model_name, "textual.onnx"),
                 &format!("{}{}", S3_BUCKET_V2, model_details.textual),
@@ -161,6 +163,7 @@ impl CLIPEmbedder {
         }
         let visual_model_fp = PathBuf::from(params.model_path).join("visual.onnx");
         if !visual_model_fp.exists() {
+            info!(model=params.model_name, "visual.onnx does not exist, downloading from remote");
             download_model_sync(
                 &format!("{}.{}", params.model_name, "visual.onnx"),
                 &format!("{}{}", S3_BUCKET_V2, model_details.visual),
@@ -169,19 +172,24 @@ impl CLIPEmbedder {
                 model_details.visual_hash,
             )?;
         }
+        info!(model=params.model_name, "building the session_textual");
         let session_textual = SessionBuilder::new(&params.ort_environment)?
             .with_optimization_level(GraphOptimizationLevel::Level1)?
             .with_inter_threads(params.num_threads)?
             .with_parallel_execution(true)?
             .with_model_from_file(text_model_fp)?;
+        info!(model=params.model_name, "building the session_visual");
         let session_visual = SessionBuilder::new(&params.ort_environment)?
             .with_optimization_level(GraphOptimizationLevel::Level1)?
             .with_inter_threads(params.num_threads)?
             .with_parallel_execution(true)?
             .with_model_from_file(visual_model_fp)?;
+        info!(model=params.model_name, "building the tokenizer");
         let tokenizer: Tokenizer;
         match Tokenizer::from_pretrained("openai/clip-vit-base-patch16", None) {
-            Ok(tk) => tokenizer = tk,
+            Ok(tk) => {
+                tokenizer = tk
+            }
             Err(err) => {
                 bail!("unable to create a tokenizer: {}", err);
             }

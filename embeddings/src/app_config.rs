@@ -4,6 +4,7 @@ use anyhow::{anyhow, bail};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
+use tracing::warn;
 use yaml_rust::YamlLoader;
 
 pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSettings>> {
@@ -29,7 +30,8 @@ pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSe
         match doc["models"].as_vec() {
             Some(m) => models = m,
             None => {
-                bail!("[config] yaml file is missing a list of models")
+               warn!("yaml file has no associated models with it");
+               return Ok(Vec::new())
             }
         }
         for idx_model in 0..models.len() {

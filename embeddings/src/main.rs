@@ -283,7 +283,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     if model_configs.len() == 0 {
-        panic!("at least 1 model should be specified, please check your config")
+        panic!("at least 1 model should be specified, please check your config at: {:?}", args.config);
     }
     let subscriber = tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
@@ -337,6 +337,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
             Err(err) => {
+                info!(model = model_name, "unable to create the model");
                 panic!(
                     "could not intialize model: {} | err: {}",
                     cfg.model_name, err
@@ -344,6 +345,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+
     // Server::builder()
     //     .add_service(ApiServer::new(apiserver))
     //     .add_service(reflection_server)

@@ -1,9 +1,8 @@
 syntax = "proto3";
 package api;
+import "google/api/annotations.proto";
 
-message InitializeModelRequest {
-  repeated ModelSettings models = 1;
-}
+message InitializeModelRequest { repeated ModelSettings models = 1; }
 
 message ModelSettings {
   EncodingModel model_name = 1;
@@ -18,9 +17,7 @@ enum EncodingModelDevice {
   MD_TENSOR = 3;
 }
 
-message InitializeModelResponse {
-  repeated ModelInitResult results = 1;
-}
+message InitializeModelResponse { repeated ModelInitResult results = 1; }
 message ModelInitResult {
   EncodingModel model_name = 1;
   bool initialized = 2;
@@ -61,6 +58,17 @@ message EncodeResult {
 message EncodeResponse { repeated EncodeResult results = 1; }
 
 service Api {
-  rpc Encode(EncodeRequest) returns (EncodeResponse);
-  rpc InitializeModel(InitializeModelRequest) returns (InitializeModelResponse);
+  rpc Encode(EncodeRequest) returns (EncodeResponse) {
+    option (google.api.http) = {
+      post : "/encode"
+      body: "*"
+    };
+  }
+  rpc InitializeModel(InitializeModelRequest)
+      returns (InitializeModelResponse) {
+    option (google.api.http) = {
+      post : "/initalize"
+      body: "*"
+    };
+  }
 }
