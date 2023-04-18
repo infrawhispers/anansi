@@ -74,15 +74,27 @@ The list of environment variables that are supported are as follows:
 
 ```EMBEDDS_GRPC_PORT```
 </td>
-<td><p>Port to listen for and server gRPC requests.</td>
+<td><p>port to listen for and server gRPC requests.</td>
 </tr>
-
 <tr>
 <td>
 
 ```EMBEDDS_HTTP_PORT```
 </td>
-<td><p>Port to listen for and server HTTP requests.</td>
+<td><p>port to listen for and server HTTP requests.</td>
 </tr>
+<tr>
+<td>
 
+```EMBEDDS_CONFIG_FILE```
+</td>
+<td><p>filepath to store the runtime configuration for models - more on this file is available below</p></td>
+</tr>
+<tr>
+<td>
+
+```EMBEDDS_CACHE_FOLDER```
+</td>
+<td><p>folder in which to store the cached model files - these are typically on the order of ~100s of MBs so it makes sense to keep it on a dedicated volume. </p></td>
+</tr>
 </table>
