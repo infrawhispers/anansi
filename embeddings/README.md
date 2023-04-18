@@ -21,12 +21,12 @@ curl \
 -d '{"data": [{
         "model": "M_CLIP_VIT_L_14_336_OPENAI",
         "text": [
-            "3D ActionSLAM: wearable person tracking in multi-floor environments is the best thing that we can possibly do",
-            "3D ActionSLAM: wearable person tracking in multi-floor environments is the best thing that we can possibly do"
+            "3D ActionSLAM: wearable person tracking in multi-floor environments.",
+            "Tracking early lung cancer metastatic dissemination in TRACERx..."
         ],
         "instructions": [
             "Represent the Science title:",
-            "Represent the Magazine title:"
+            "Represent the Nature title:"
         ]}
     ]}
 '
@@ -43,10 +43,9 @@ c = Client(
 )
 r = c.encode(
     [
-        'First do it',
-        'then do it right',
-        'then do it better',
-        'https://picsum.photos/200',
+        'The quick brown fox',
+        'jumps over the lazy dog',
+        'and runs all the way to the finish line',
     ]
 )
 print(r)
