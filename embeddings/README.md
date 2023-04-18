@@ -21,8 +21,8 @@ curl \
 -d '{"data": [{
         "model": "M_CLIP_VIT_L_14_336_OPENAI",
         "text": [
-            "3D ActionSLAM: wearable person tracking in multi-floor environments.",
-            "Tracking early lung cancer metastatic dissemination in TRACERx..."
+            "3D ActionSLAM: wearable person tracking ...",
+            "Tracking early lung cancer metastatic..."
         ],
         "instructions": [
             "Represent the Science title:",
@@ -39,7 +39,8 @@ curl \
 from embedds_client import Client
 
 c = Client(
-    'grpcs://embedds.getanansi.com:50051', credential={'Authorization': '<your access token>'}
+    'grpcs://embedds.getanansi.com:50051',
+    credential={'Authorization': '<access token>'}
 )
 r = c.encode(
     [
@@ -63,3 +64,25 @@ Both options are loaded with envoy, which provides JSON <-> GRPC transcoding. We
 source and packaging for even lighter images below.
 
 The list of environment variables that are supported are as follows:
+<table>
+<tr>
+<td>Environment Variable</td>
+<td>Usage</td>
+</tr>
+<tr>
+<td>
+
+```EMBEDDS_GRPC_PORT```
+</td>
+<td><p>Port to listen for and server gRPC requests.</td>
+</tr>
+
+<tr>
+<td>
+
+```EMBEDDS_HTTP_PORT```
+</td>
+<td><p>Port to listen for and server HTTP requests.</td>
+</tr>
+
+</table>
