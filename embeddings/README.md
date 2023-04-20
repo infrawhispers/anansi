@@ -31,7 +31,6 @@ grpcurl -d '{
 </td>
 <td>
 
-
 ```json
 {
     "results": [
