@@ -32,7 +32,7 @@ official docker images are available here.
 <td>embedds 🛏</td>
 <td>
 
-`/embedds`
+`/embeddings`
 
 </td>
 <td>
