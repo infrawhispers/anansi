@@ -109,8 +109,3 @@ if __name__ == "__main__":
 
     if "instructor-" in args.model_name:
         handle_instructor(args.action, args.model_name, Path(args.output_folder))
-
-    # print("hello!")
-    # onnx_model_name = "instructor_w_ctx_mask_v2.onnx"
-    # export_model_to_onnx(onnx_model_name)
-    # evaluate_onnx_model(onnx_model_name)
