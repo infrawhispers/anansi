@@ -7,7 +7,7 @@ use ndarray::Dim;
 use ndarray::{array, s, Array, Array1};
 use ort::{
     tensor::DynOrtTensor, tensor::FromArray, tensor::InputTensor, tensor::OrtOwnedTensor,
-    GraphOptimizationLevel, Session, SessionBuilder, ExecutionProvider,
+    ExecutionProvider, GraphOptimizationLevel, Session, SessionBuilder,
 };
 use phf::phf_map;
 use tokenizers::tokenizer::Tokenizer;

@@ -8,7 +8,6 @@ use tracing::warn;
 use yaml_rust::YamlLoader;
 
 pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSettings>> {
-    println!("config_path: {:?}!!!", config_path);
     if !config_path.exists() {
         warn!(
             "config_path: {:?} does not exist, initalizing the default M_CLIP_VIT_L_14_336_OPENAI",

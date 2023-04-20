@@ -36,21 +36,21 @@ struct CLIPModel {
 }
 static S3_BUCKET_V2: &'static str = "https://clip-as-service.s3.us-east-2.amazonaws.com/models-436c69702d61732d53657276696365/onnx/";
 static CLIP_MODELS: phf::Map<&'static str, CLIPModel> = phf_map! {
-    "RN50_OPENAI" => CLIPModel{
+    "CLIP_RN50_OPENAI" => CLIPModel{
         textual: "RN50/textual.onnx",
         textual_hash:"722418bfe47a1f5c79d1f44884bb3103",
         visual: "RN50/visual.onnx",
         visual_hash: "5761475db01c3abb68a5a805662dcd10",
         image_size: 224,
     },
-    "RN50_YFCC15M" => CLIPModel{
+    "CLIP_RN50_YFCC15M" => CLIPModel{
         textual: "RN50-yfcc15m/textual.onnx",
         textual_hash: "4ff2ea7228b9d2337b5440d1955c2108",
         visual: "RN50-yfcc15m/visual.onnx",
         visual_hash: "87daa9b4a67449b5390a9a73b8c15772",
         image_size: 224,
     },
-    "RN50_CC12M" => CLIPModel{
+    "CLIP_RN50_CC12M" => CLIPModel{
         textual: "RN50-cc12m/textual.onnx",
         textual_hash: "78fa0ae0ea47aca4b8864f709c48dcec",
         visual: "RN50-cc12m/visual.onnx",
@@ -64,6 +64,7 @@ static CLIP_MODELS: phf::Map<&'static str, CLIPModel> = phf_map! {
         visual_hash: "f3b1f5d55ca08d43d749e11f7e4ba27e",
         image_size: 336
     },
+    // "CLIP_"
 };
 
 // static CLIP_MODEL_VISUAL_SIZING: phf::Ma<&'static str, i32> = phf_map! {

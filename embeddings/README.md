@@ -21,7 +21,7 @@ grpcurl -d '{
         "model":"M_INSTRUCTOR_LARGE",
         "text":[
             "3D ActionSLAM: wearable person tracking ...",
-            "Tracking early lung cancer metastatic..."
+            "Inside Gohar World and the Fine, Fantastical Art"
         ],
         "instructions":[
             "Represent the Science title:",
@@ -38,10 +38,10 @@ grpcurl -d '{
 {
     "results": [
         {
-            "embedding": [0.2052011638879776, -0.1430814117193222, ...]
+            "embedding": [-0.06240629777312279, 0.025188930332660675, ...]
         },
         {
-            "embedding": [-0.33970779180526733, 0.14125438034534454, ...]
+            "embedding": [-0.018718170002102852, -0.03428122401237488, ...]
         }
     ]
 }
@@ -61,11 +61,11 @@ curl \
         "model": "M_INSTRUCTOR_LARGE",
         "text": [
             "3D ActionSLAM: wearable person tracking ...",
-            "Tracking early lung cancer metastatic..."
+            "Inside Gohar World and the Fine, Fantastical Art"
         ],
         "instructions": [
             "Represent the Science title:",
-            "Represent the Nature title:"
+            "Represent the Magazine title:"
         ]}
     ]}
 '
@@ -73,7 +73,7 @@ curl \
 
 ## Getting Started
 
-### Image and Env Variables
+### Image & Env Variables
 
 The easiest way to get started locally is to use one of the docker images we publish here:
 
@@ -148,7 +148,7 @@ This configuration would create ONE `CLIP_VIT_L_14_336` and TWO `M_INSTRUCTOR_LA
 
 ### Tips & Recommendations
 
-We recommend having a volume mount for the cache folder in order to speed up startup and prevent repeated downloads.
+We recommend having a volume mount for the cache folder in order to speed up startup and prevent repeated downloads. You can spin-up a local embedds service in this manner:
 
 ```bash
 docker run -p 0.0.0.0:50051:50051 -p 0.0.0.0:50052:50052 \

@@ -20,7 +20,7 @@ RUN cargo chef prepare  --recipe-path recipe.json
 # this allows us to do development in a repetable manner
 FROM rust:1.68-slim-buster as cacher
 RUN apt update && apt-get -y install openssl build-essential libc6 \
-    libc-bin musl-tools libssl-dev libvips-dev pkg-config python3 \
+    libc-bin musl-tools libssl-dev libvips-dev pkg-config \
     protobuf-compiler supervisor
 WORKDIR /app
 RUN cargo install cargo-chef
