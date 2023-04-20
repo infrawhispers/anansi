@@ -112,7 +112,6 @@ The list of environment variables that are supported are as follows:
 </tr>
 </table>
 
----
 ### Config File
 The `EMBEDDS_CONFIG_FILE` points to an accessible filepath that stores a list of models that should be instantiated on startup of the process.
 
@@ -135,14 +134,11 @@ models:
 
 This configuration would create ONE `CLIP_VIT_L_14_336` and TWO `M_INSTRUCTOR_LARGE` models. This is useful for running multiple embedding models on a single GPU. The list of devices and available models can be found [here](https://github.com/infrawhispers/anansi/blob/main/embeddings/proto/api.proto). By default, embedds will instantiate one instance of [M_INSTRUCTOR_LARGE](https://huggingface.co/hkunlp/instructor-large).
 
----
 ### Running a Server
 Once you have decided on your configuration, you can then run the server. We recommend having a volume mount for the cache folder in order to speed up startup and prevent repeated downloads.
 
 ```bash
-docker run -p 0.0.0.0:50051:50051 \
-        -p 0.0.0.0:50052:50052 \
-		-v $(PWD)/.cache:/app/.cache \
-        -v $(PWD)/runtime:/app/runtime \
+docker run -p 0.0.0.0:50051:50051 -p 0.0.0.0:50052:50052 \
+		-v $(PWD)/.cache:/app/.cache -v $(PWD)/runtime:/app/runtime \
 		anansi:embeddings-latest
 ```
