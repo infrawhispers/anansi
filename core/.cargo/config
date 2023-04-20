@@ -1,5 +1,7 @@
 [target.wasm32-unknown-unknown]
-rustflags = ["-C", "target-feature=+atomics,+bulk-memory,+mutable-globals,+simd128"]
+#rustflags = [
+#   "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals,+simd128",
+#]
 
 [target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "target-cpu=native"]

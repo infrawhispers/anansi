@@ -2,6 +2,7 @@ pub mod app_config;
 pub mod clip;
 pub mod embedder;
 pub mod embedder_manager;
+pub mod image_processor;
 pub mod instructor;
 pub mod utils;
 

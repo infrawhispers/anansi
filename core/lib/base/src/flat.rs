@@ -47,7 +47,7 @@ where
                 unreachable!("incorrect params passed for construction")
             }
         };
-        FlatIndex::new(flat_params)
+        FlatIndex::new_core(flat_params)
     }
 
     fn insert(&self, eids: &[EId], points: ann::Points<TVal>) -> anyhow::Result<()> {
@@ -71,7 +71,7 @@ where
     TVal: ann::ElementVal,
     TMetric: metric::Metric<TVal>,
 {
-    pub fn new(params: &FlatParams) -> anyhow::Result<FlatIndex<TMetric, TVal>> {
+    pub fn new_core(params: &FlatParams) -> anyhow::Result<FlatIndex<TMetric, TVal>> {
         let aligned_dim = ann::round_up(params.dim as u32) as usize;
         let mut v_per_segment: usize = (params.segment_size_kb * 1000) / (aligned_dim as usize * 4);
         if v_per_segment < 1000 {

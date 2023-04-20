@@ -1057,6 +1057,7 @@ where
             }
         }
         // finally run the insertion process
+
         self.link(vids, false);
         Ok(())
     }

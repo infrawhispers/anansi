@@ -6,6 +6,7 @@ use std::io::Read;
 use std::path::Path;
 
 use anyhow::bail;
+use bytes::Bytes;
 use futures::StreamExt;
 use md5::{Digest, Md5};
 use reqwest::header::HeaderMap;
@@ -51,6 +52,22 @@ async fn get_md5(file_path: &Path) -> anyhow::Result<String> {
     let hash = hasher.finalize();
     Ok(base16ct::lower::encode_string(&hash))
 }
+
+pub fn download_image_sync(uri: &str) -> anyhow::Result<Bytes> {
+    let client = reqwest::blocking::Client::new();
+    let mut headers = HeaderMap::new();
+    headers.insert("User-Agent", "Mozilla/5.0".parse()?);
+    let res = client.get(uri).headers(headers).send()?;
+    Ok(res.bytes()?)
+}
+pub async fn download_image(uri: &str) -> anyhow::Result<Bytes> {
+    let client = reqwest::Client::new();
+    let mut headers = HeaderMap::new();
+    headers.insert("User-Agent", "Mozilla/5.0".parse()?);
+    let res = client.get(uri).headers(headers).send().await?;
+    Ok(res.bytes().await?)
+}
+
 pub fn download_model_sync(
     model_name: &str,
     uri: &str,
@@ -244,6 +261,4 @@ mod tests {
         .expect("error while downloading the test file");
         assert_eq!(dest_path.join("download.bin").exists(), true);
     }
-    // TODO(infrawhispers) - add a test for thwne the filesystem fails us
-    // or we need to resume the download from the checkpoint!
 }

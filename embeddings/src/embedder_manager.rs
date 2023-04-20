@@ -12,6 +12,7 @@ use tracing::info;
 use crate::clip;
 use crate::embedder;
 use crate::embedder::EmebeddingRequest;
+use crate::image_processor::ImageProcessor;
 use crate::instructor;
 
 // struct ModelQueue {
@@ -24,6 +25,7 @@ pub struct EmbedderManager {
     // TODO(infrawhispers) - could we get away with using a Vec<Box>?
     models: Arc<RwLock<HashMap<String, Vec<Arc<dyn embedder::Embedder>>>>>,
     ort_environment: Arc<Environment>,
+    img_processor: Arc<ImageProcessor>,
     model_path: PathBuf,
 }
 
@@ -56,6 +58,7 @@ impl EmbedderManager {
             models: Arc::new(RwLock::new(HashMap::new())),
             model_path: model_path.clone(),
             ort_environment: ort_environment,
+            img_processor: Arc::new(ImageProcessor::new()?),
         };
         Ok(obj)
     }
@@ -86,6 +89,7 @@ impl EmbedderManager {
                         num_threads: num_threads as i16,
                         providers: &providers,
                         ort_environment: self.ort_environment.clone(),
+                        img_processor: self.img_processor.clone(),
                     })?;
                 m = Arc::new(embedder);
             }
@@ -101,6 +105,7 @@ impl EmbedderManager {
                         num_threads: num_threads as i16,
                         providers: &providers,
                         ort_environment: self.ort_environment.clone(),
+                        img_processor: self.img_processor.clone(),
                     })?;
                 m = Arc::new(embedder);
             }
@@ -207,8 +212,8 @@ mod tests {
             .finish();
         tracing::subscriber::set_global_default(subscriber)
             .expect("unable to create the tracing subscriber");
-
-        let model_path = PathBuf::from("cache");
+        return;
+        let model_path = PathBuf::from(".cache");
         let model_name = "M_CLIP_VIT_L_14_336_OPENAI";
         let mgr =
             Arc::new(EmbedderManager::new(&model_path).expect("unable to create the manager"));

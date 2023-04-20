@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::image_processor::ImageProcessor;
 use ort::{environment::Environment, ExecutionProvider};
 
 pub struct EmbedderParams<'a> {
@@ -9,6 +10,7 @@ pub struct EmbedderParams<'a> {
     pub num_threads: i16,
     pub providers: &'a [ExecutionProvider],
     pub ort_environment: Arc<Environment>,
+    pub img_processor: Arc<ImageProcessor>,
 }
 
 #[derive(Debug)]

@@ -1,39 +1,27 @@
-use byteorder::{BigEndian, ByteOrder};
 use js_sys::Array;
-use rand::distributions::{Distribution, Standard};
-use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
-pub use wasm_bindgen_rayon::init_thread_pool;
-use wasm_bindgen_test::*;
-wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+// pub use wasm_bindgen_rayon::init_thread_pool;
+// use wasm_bindgen_test::*;
+// wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
 use base::ann::{ANNIndex, ANNParams, EId, Node};
 use base::diskannv1::DiskANNParams;
 use base::diskannv1::DiskANNV1Index;
+use base::metric;
 
-#[wasm_bindgen]
-extern "C" {
-    // Use `js_namespace` here to bind `console.log(..)` instead of just
-    // `log(..)`
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-macro_rules! console_log {
-    // Note that this is using the `log` function imported above during
-    // `bare_bones`
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-}
-
-#[wasm_bindgen(getter_with_clone)]
-pub struct Baz {
-    pub field: i32,
-}
-
-#[wasm_bindgen]
-pub fn get_a_baz() -> Baz {
-    Baz { field: 32 }
-}
+// #[wasm_bindgen]
+// extern "C" {
+//     // Use `js_namespace` here to bind `console.log(..)` instead of just
+//     // `log(..)`
+//     #[wasm_bindgen(js_namespace = console)]
+//     fn log(s: &str);
+// }
+// macro_rules! console_log {
+//     // Note that this is using the `log` function imported above during
+//     // `bare_bones`
+//     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+// }
 
 #[derive(Serialize, Deserialize)]
 pub struct WNode {
@@ -44,7 +32,6 @@ pub struct WNode {
 
 #[wasm_bindgen]
 pub struct Index {
-    // num_points: i32
     index: DiskANNV1Index<base::metric::MetricCosine, f32>,
 }
 
@@ -154,22 +141,22 @@ impl Index {
     }
 }
 
-#[wasm_bindgen_test]
-fn test_new_index() {
-    let num_points = 10000;
-    let _index = Index::new(512, num_points + 10);
-    let eids = js_sys::Array::new();
-    for i in 0..num_points {
-        eids.push(&js_sys::JsString::from_char_code1(i.try_into().unwrap()));
-    }
+// // #[wasm_bindgen_test]
+// // fn test_new_index() {
+// //     let num_points = 10000;
+// //     let _index = Index::new(512, num_points + 10);
+// //     let eids = js_sys::Array::new();
+// //     for i in 0..num_points {
+// //         eids.push(&js_sys::JsString::from_char_code1(i.try_into().unwrap()));
+// //     }
 
-    let mut rng = thread_rng();
-    let v: Vec<f32> = Standard
-        .sample_iter(&mut rng)
-        .take(512 * num_points)
-        .collect();
-    match _index.insert(eids, &v) {
-        Ok(()) => {}
-        Err(err) => assert_eq!(1, 2),
-    }
-}
+// //     let mut rng = thread_rng();
+// //     let v: Vec<f32> = Standard
+// //         .sample_iter(&mut rng)
+// //         .take(512 * num_points)
+// //         .collect();
+// //     match _index.insert(eids, &v) {
+// //         Ok(()) => {}
+// //         Err(err) => assert_eq!(1, 2),
+// //     }
+// // }

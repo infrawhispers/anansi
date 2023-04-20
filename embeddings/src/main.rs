@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::thread::available_parallelism;
 
 use anyhow::{anyhow, bail};
-use clap::{command, Parser};
+use clap::{command, ArgAction, Parser};
 use clap_port_flag::Port;
 use ort::ExecutionProvider;
 use tokio::signal::unix::SignalKind;
@@ -30,22 +30,28 @@ use embeddings::API_DESCRIPTOR_SET;
 pub struct BinaryArgs {
     #[clap(flatten)]
     port: Port,
-    /// configuration for the embedding models to be loaded on startup.
+    /// configuration for the embedding models to be loaded on startup
     #[clap(long, short = 'c', default_value = "config.yml")]
     config: PathBuf,
-    /// folder in which embedding models will be downloaded and cached.
+    /// folder in which embedding models will be downloaded and cached
     #[clap(long, short = 'f', default_value = ".cache")]
     model_folder: PathBuf,
+    /// allow for administrative actions: [Initialize()]
+    #[clap(long, action=ArgAction::SetTrue)]
+    allow_admin: bool,
 }
 
 pub struct ApiServerImpl {
     mgr: Arc<embedder_manager::EmbedderManager>,
+    // accepts requests made to: [Initialize()]
+    allow_admin: bool,
 }
 
 impl ApiServerImpl {
-    fn new(model_path: &PathBuf) -> anyhow::Result<Self> {
+    fn new(model_path: &PathBuf, allow_admin: bool) -> anyhow::Result<Self> {
         let obj = ApiServerImpl {
             mgr: Arc::new(embedder_manager::EmbedderManager::new(model_path)?),
+            allow_admin: allow_admin,
         };
         Ok(obj)
     }
@@ -217,6 +223,12 @@ impl Api for ApiServerImpl {
         &self,
         request: Request<InitializeModelRequest>,
     ) -> Result<Response<InitializeModelResponse>, Status> {
+        if !self.allow_admin {
+            return Err(Status::new(
+                Code::PermissionDenied,
+                format!("server has been configured with allow_admin: {} Initialize() cannot be called without authorization", self.allow_admin),
+            ));
+        }
         let req = request.into_inner();
         let mut results: Vec<ModelInitResult> = Vec::new();
         for idx in 0..req.models.len() {
@@ -283,7 +295,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     if model_configs.len() == 0 {
-        panic!("at least 1 model should be specified, please check your config at: {:?}", args.config);
+        panic!(
+            "at least 1 model should be specified, please check your config at: {:?}",
+            args.config
+        );
     }
     let subscriber = tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
@@ -316,7 +331,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     }
     let apiserver;
-    match ApiServerImpl::new(&args.model_folder) {
+    match ApiServerImpl::new(&args.model_folder, args.allow_admin) {
         Ok(server) => {
             apiserver = server;
         }
@@ -363,6 +378,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     let mut terminate_await = tokio::signal::unix::signal(SignalKind::terminate()).unwrap();
     tokio::spawn(async move {
+        info!("installing signal handlers for [SIGINT, SIGTERM]");
         tokio::select! {
             _ = cloned_token_2.cancelled() => {}
             _ = signal::ctrl_c() => {
@@ -375,7 +391,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
-    // task2_handle.await;
+    info!("serving");
     grpc_server.await?;
     info!("sever shutdown - exiting");
     // task1_handle.await?;

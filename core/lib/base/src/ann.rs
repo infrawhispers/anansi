@@ -5,6 +5,8 @@ use std::default::Default;
 use crate::diskannv1::DiskANNParams;
 use crate::flat::FlatParams;
 use crate::metric;
+use pyo3::prelude::*;
+
 use num::traits::NumAssign;
 
 #[derive(Debug)]
@@ -13,7 +15,8 @@ pub enum ANNParams {
     DiskANN { params: DiskANNParams },
 }
 
-#[derive(Serialize, Deserialize)]
+#[pyclass]
+#[derive(Serialize, Deserialize, Clone )]
 pub enum ANNTypes {
     DiskANN = 1,
     Flat = 2,

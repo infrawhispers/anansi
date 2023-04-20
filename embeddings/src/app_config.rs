@@ -30,8 +30,8 @@ pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSe
         match doc["models"].as_vec() {
             Some(m) => models = m,
             None => {
-               warn!("yaml file has no associated models with it");
-               return Ok(Vec::new())
+                warn!("yaml file has no associated models with it");
+                return Ok(Vec::new());
             }
         }
         for idx_model in 0..models.len() {

@@ -2,7 +2,7 @@ FROM rust:1.68-slim-buster as planner
 RUN apt update && apt-get -y install openssl build-essential libc6 \
     libc-bin musl-tools libssl-dev pkg-config python3 \
     protobuf-compiler
-WORKDIR app
+WORKDIR /app
 # we only pay the installation cost once, 
 # it will be cached from the second build onwards
 RUN cargo install cargo-chef
@@ -13,7 +13,7 @@ FROM rust:1.68-slim-buster as cacher
 RUN apt update && apt-get -y install openssl build-essential libc6 \
     libc-bin musl-tools libssl-dev pkg-config python3 \
     protobuf-compiler
-WORKDIR app
+WORKDIR /app
 RUN cargo install cargo-chef
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
@@ -34,7 +34,7 @@ RUN apt update && apt-get -y install openssl build-essential libc6 \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-WORKDIR app
+WORKDIR /app
 RUN mkdir .cache && mkdir /var/log/supervisord
 COPY --from=cacher /app/target/release/embedding-server embedding-server
 COPY --from=cacher /app/init.sh init.sh
