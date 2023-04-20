@@ -24,6 +24,8 @@ resource "aws_ecs_service" "embedds-app" {
     type       = "memberOf"
     expression = "attribute:ecs.availability-zone in [us-east-2a, us-east-2b, us-east-2c]"
   }
+  # use this if we figure out how to get awsvpc working correctly - will likely need
+  # a NAT since we rely on the Transformers module and do not cache things. 
   # network_configuration {
   #   subnets = [
   #     "subnet-0c1668f3fdbf4c1ef", "subnet-07020e2f325aceb64", "subnet-01ac19546478793c9"

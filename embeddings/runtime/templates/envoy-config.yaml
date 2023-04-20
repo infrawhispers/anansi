@@ -28,6 +28,16 @@ static_resources:
                         - match: { prefix: "/" }
                           route: { cluster: embeddings }
                 http_filters:
+                  - name: health
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.health_check.v3.HealthCheck
+                      pass_through_mode: false
+                      cluster_min_healthy_percentages:
+                        embeddings:
+                          value: 10
+                      headers:
+                        - name: ":path"
+                          exact_match: "/health"
                   - name: envoy.filters.http.grpc_json_transcoder
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.grpc_json_transcoder.v3.GrpcJsonTranscoder

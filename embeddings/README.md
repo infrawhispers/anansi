@@ -17,7 +17,6 @@ A server is available at embedds.getanansi.com loaded with `M_CLIP_VIT_L_14_336_
 curl \
 -X POST https://embedds.getanansi:50052/encode \
 -H 'Content-Type: application/json' \
--H 'Authorization: <your access token>' \
 -d '{"data": [{
         "model": "M_CLIP_VIT_L_14_336_OPENAI",
         "text": [

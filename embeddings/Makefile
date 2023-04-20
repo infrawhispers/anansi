@@ -17,6 +17,11 @@ run-cpu:
 	docker run -p 0.0.0.0:50051:50051 -p 0.0.0.0:50052:50052 \
 		-v $(PWD)/.cache:/app/.cache anansi.embeddings:latest-cpu
 
+run-dev:
+	docker run -p  0.0.0.0:50051:50051 -p 0.0.0.0:50052:50052 \
+		-v $(PWD)/.cache:/app/.cache -v $(PWD)/runtime:/app/runtime \
+		-it --entrypoint bash anansi-embeddings:cacher 
+	
 build-slim-cpu:
 	docker build . -t anansi-embeddings:raw && \
 	slim build --http-probe=false --publish-port 0.0.0.0:50051:50051 \
