@@ -146,9 +146,9 @@ impl ApiServerImpl {
                 }
             }
             match x {
-                EncodingModel::MInstructorLarge |
-                EncodingModel::MInstructorXl |
-                EncodingModel::MInstructorBase => {
+                EncodingModel::MInstructorLarge
+                | EncodingModel::MInstructorXl
+                | EncodingModel::MInstructorBase => {
                     if data[i].text.len() != data[i].instructions.len() {
                         return Err(Status::new(
                             Code::InvalidArgument,
@@ -343,22 +343,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // STEP 4 - initialize the models that should be preloaded on startup.
     for idx in 0..model_configs.len() {
         let cfg = &model_configs[idx];
-        let model_name = EncodingModel::from_i32(cfg.model_name)
+        let model_name_str = EncodingModel::from_i32(cfg.model_name)
             .ok_or(anyhow!("model \"{}\" is not a valid enum", cfg.model_name))?
             .as_str_name();
-        info!(model = model_name, "initializing model before startup");
+        info!(model = model_name_str, "initializing model before startup");
         match apiserver.init_model(&cfg).await {
             Ok(()) => {
                 info!(
-                    model = model_name,
+                    model = model_name_str,
                     "successfully initialized model at startup",
                 );
             }
             Err(err) => {
-                info!(model = model_name, "unable to create the model");
+                info!(model = model_name_str, "unable to create the model");
                 panic!(
                     "could not intialize model: {} | err: {}",
-                    cfg.model_name, err
+                    model_name_str, err
                 );
             }
         }

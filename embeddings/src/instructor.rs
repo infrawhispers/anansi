@@ -36,12 +36,27 @@ impl Embedder for InstructorEmbedder {
 }
 
 static EMBEDDING_LENGTH: usize = 768;
-static S3_BUCKET_URI: &'static str = "https://d1wz516niig2xr.cloudfront.net/models.getanansi.com/";
+static S3_BUCKET_URI: &'static str = "https://d1wz516niig2xr.cloudfront.net";
 
-static INSTUCTOR_MODELS: phf::Map<&'static str, &'static str> = phf_map! {
-    "INSTRUCTOR_LARGE" => "instructor_large.onnx",
-    "INSTRUCTOR_BASE" => "instructor_base.onnx",
-    "INSTRUCTOR_XL" => "instructor_xl.onnx",
+#[derive(Clone, Copy)]
+struct ModelDetails {
+    pub filename: &'static str,
+    pub hash_val: &'static str,
+}
+
+static INSTUCTOR_MODELS: phf::Map<&'static str, ModelDetails> = phf_map! {
+    "INSTRUCTOR_LARGE" => ModelDetails {
+        filename: "instructor_large.onnx",
+        hash_val: "8f829d4c1714de7c25872fdafab633aa",
+    },
+    "INSTRUCTOR_BASE" => ModelDetails {
+        filename: "instructor_base.onnx",
+        hash_val: "72c15eca9cd2e5167c42104a00497354",
+    },
+    "INSTRUCTOR_XL" => ModelDetails {
+        filename: "instructor_xl.onnx",
+        hash_val: "---",
+    },
 };
 
 impl InstructorEmbedder {
@@ -159,9 +174,9 @@ impl InstructorEmbedder {
         Ok(result)
     }
     pub fn new(params: &EmbedderParams) -> anyhow::Result<Self> {
-        let model_filename;
+        let model_details;
         match INSTUCTOR_MODELS.get(params.model_name) {
-            Some(name) => model_filename = name,
+            Some(d) => model_details = d,
             None => {
                 bail!("INSTRUCTOR_MODEL: {} was not found", params.model_name)
             }
@@ -169,14 +184,14 @@ impl InstructorEmbedder {
         if !params.model_path.exists() {
             fs::create_dir_all(params.model_path)?;
         }
-        let model_file_path = PathBuf::from(params.model_path).join(model_filename);
+        let model_file_path = PathBuf::from(params.model_path).join(model_details.filename);
         if !model_file_path.exists() {
             download_model_sync(
                 params.model_name,
-                &format!("{}/instructor/{}", S3_BUCKET_URI, model_filename),
+                &format!("{}/instructor/{}", S3_BUCKET_URI, model_details.filename),
                 true,
                 &model_file_path,
-                "8f829d4c1714de7c25872fdafab633aa",
+                model_details.hash_val,
             )?;
             // let runtime = Runtime::new()?;
             // tokio::runtime::Runtime::new()?.block_on(download_model(

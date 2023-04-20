@@ -101,6 +101,7 @@ pub fn download_model_sync(
         );
         headers.insert("Range", format!("bytes={}-", resume_byte_pos).parse()?);
     }
+    info!(model = model_name, "fetch uri: {}", uri);
     let client = reqwest::blocking::Client::new();
     let mut res = client.get(uri).headers(headers).send()?;
     if res.status() == 416 {
@@ -114,7 +115,11 @@ pub fn download_model_sync(
     }
 
     if res.status() != 206 && res.status() != 200 {
-        bail!("recived status code: {}, bailing", res.status());
+        bail!(
+            "recived status code: {} | text: {:?}",
+            res.status(),
+            res.text()
+        );
     }
     let bytes_total: u64;
     match res.content_length() {

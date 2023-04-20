@@ -4,6 +4,6 @@ models:
   # - name: M_CLIP_VIT_L_14_336_OPENAI
   #   num_threads: 4
   #   devices: []
-  - name: M_INSTRUCTOR_LARGE
+  - name: M_INSTRUCTOR_BASE
     num_threads: 4
   #   devices: []
