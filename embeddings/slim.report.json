@@ -1,0 +1,310 @@
+{
+  "version": "1.1",
+  "engine": "linux|Transformer|1.40.1|9c5e69ab1fd4564b0a5426d47be038155e63e4c1|2023-04-05_11:22:53PM",
+  "containerized": false,
+  "host_distro": {
+    "name": "Ubuntu",
+    "version": "22.04",
+    "display_name": "Ubuntu 22.04 LTS"
+  },
+  "type": "build",
+  "state": "done",
+  "target_reference": "anansi-embeddings:raw",
+  "system": {
+    "type": "",
+    "release": "",
+    "distro": {
+      "name": "",
+      "version": "",
+      "display_name": ""
+    }
+  },
+  "source_image": {
+    "identity": {
+      "id": "sha256:74177495a8ba45d2450932171bc2ccdfe57a551faf6bdf1f3a8b1f25201b6115",
+      "tags": [
+        "raw"
+      ],
+      "names": [
+        "anansi-embeddings:raw"
+      ]
+    },
+    "size": 1785625464,
+    "size_human": "1.8 GB",
+    "create_time": "2023-04-20T03:10:57Z",
+    "docker_version": "20.10.12",
+    "architecture": "amd64",
+    "exposed_ports": [
+      "50051/tcp",
+      "50052/tcp"
+    ],
+    "os": "linux",
+    "env_vars": [
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    ],
+    "container_entry": {
+      "exe_path": ""
+    }
+  },
+  "minified_image_size": 267506413,
+  "minified_image_size_human": "268 MB",
+  "minified_image": "anansi.embeddings:latest-cpu",
+  "minified_image_has_data": true,
+  "minified_by": 6.675075352305666,
+  "artifact_location": "/tmp/slim-state/.slim-state/images/74177495a8ba45d2450932171bc2ccdfe57a551faf6bdf1f3a8b1f25201b6115/artifacts",
+  "container_report_name": "creport.json",
+  "seccomp_profile_name": "anansi-embeddings-seccomp.json",
+  "apparmor_profile_name": "anansi-embeddings-apparmor-profile",
+  "image_stack": [
+    {
+      "is_top_image": false,
+      "id": "sha256:92a9b50a62b45ede9878156909ea76de9d04716aa0cdfe175bd2d28e34b87149",
+      "full_name": "debian:buster-slim",
+      "repo_name": "debian",
+      "version_tag": "buster-slim",
+      "raw_tags": [
+        "debian:buster-slim"
+      ],
+      "create_time": "2023-04-12T00:20:26Z",
+      "new_size": 69261531,
+      "new_size_human": "69 MB",
+      "instructions": [
+        {
+          "type": "ADD",
+          "time": "2023-04-12T00:20:25Z",
+          "is_nop": true,
+          "local_image_exists": false,
+          "layer_index": 0,
+          "size": 69261531,
+          "size_human": "69 MB",
+          "params": "file:e614539607055bdbde0cc1a94ef9783fe3627c8553ef1b21071ecb5c27ea27e4 in /",
+          "command_snippet": "ADD file:e614539607055bdbde0cc1a94ef9783fe36...",
+          "command_all": "ADD file:e614539607055bdbde0cc1a94ef9783fe3627c8553ef1b21071ecb5c27ea27e4 /",
+          "target": "/",
+          "source_type": "file",
+          "inst_set_time_bucket": "2023-04-11T20:15:00-04:00"
+        },
+        {
+          "type": "CMD",
+          "time": "2023-04-12T00:20:26Z",
+          "is_last_instruction": true,
+          "is_nop": true,
+          "is_exec_form": true,
+          "local_image_exists": true,
+          "layer_index": 0,
+          "size": 0,
+          "params": "[\"bash\"]\n",
+          "command_snippet": "CMD [\"bash\"]\n",
+          "command_all": "CMD [\"bash\"]\n",
+          "raw_tags": [
+            "debian:buster-slim"
+          ],
+          "inst_set_time_bucket": "2023-04-11T20:15:00-04:00"
+        }
+      ]
+    },
+    {
+      "is_top_image": true,
+      "id": "sha256:74177495a8ba45d2450932171bc2ccdfe57a551faf6bdf1f3a8b1f25201b6115",
+      "full_name": "anansi-embeddings:raw",
+      "repo_name": "anansi-embeddings",
+      "version_tag": "raw",
+      "raw_tags": [
+        "anansi-embeddings:raw"
+      ],
+      "create_time": "2023-04-20T03:10:57Z",
+      "new_size": 1716363933,
+      "new_size_human": "1.7 GB",
+      "base_image_id": "sha256:92a9b50a62b45ede9878156909ea76de9d04716aa0cdfe175bd2d28e34b87149",
+      "instructions": [
+        {
+          "type": "RUN",
+          "time": "2023-04-20T03:10:52Z",
+          "is_nop": false,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:cba3350c66cabcd1785832fa83fb0abaad1d14cb875528dbf24da465a7c299f9",
+          "layer_index": 0,
+          "size": 1155339719,
+          "size_human": "1.2 GB",
+          "command_snippet": "RUN apt update && \\\n\tapt-get -y install open...",
+          "command_all": "RUN apt update && \\\n\tapt-get -y install openssl build-essential libc6     libc-bin musl-tools ca-certificates supervisor gettext libvips-dev && \\\n\tapt-get clean && \\\n\trm -rf /var/lib/apt/lists/*",
+          "system_commands": [
+            "apt update",
+            "apt-get -y install openssl build-essential libc6     libc-bin musl-tools ca-certificates supervisor gettext libvips-dev",
+            "apt-get clean",
+            "rm -rf /var/lib/apt/lists/*"
+          ],
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "WORKDIR",
+          "time": "2023-04-20T03:10:53Z",
+          "is_nop": true,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:545f6ddbfc92a73d24d5d3bc9efc5ec5a85cc6ad20788b5e9dd84060c4819183",
+          "layer_index": 0,
+          "size": 0,
+          "params": "/app",
+          "command_snippet": "WORKDIR /app",
+          "command_all": "WORKDIR /app",
+          "system_commands": [
+            "mkdir -p /app"
+          ],
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "RUN",
+          "time": "2023-04-20T03:10:53Z",
+          "is_nop": false,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:2bae27dfce5f8a59b7f63a996d1048cc2e82a7c652c2a966ca2719e31bfec374",
+          "layer_index": 0,
+          "size": 0,
+          "command_snippet": "RUN mkdir .cache && \\\n\tmkdir /var/log/superv...",
+          "command_all": "RUN mkdir .cache && \\\n\tmkdir /var/log/supervisord",
+          "system_commands": [
+            "mkdir .cache",
+            "mkdir /var/log/supervisord"
+          ],
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "COPY",
+          "time": "2023-04-20T03:10:53Z",
+          "is_nop": true,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:372435a6db6e3124441bca77cdc186d79800a74fbfab267d2a690171604a0088",
+          "layer_index": 0,
+          "size": 23430528,
+          "size_human": "23 MB",
+          "params": "file:20223bcd875579995fe20bfb4511e4edc3c7f23c936cd9420608d794e2985cc8 in embedding-server",
+          "command_snippet": "COPY file:20223bcd875579995fe20bfb4511e4edc3...",
+          "command_all": "COPY file:20223bcd875579995fe20bfb4511e4edc3c7f23c936cd9420608d794e2985cc8 embedding-server",
+          "target": "embedding-server",
+          "source_type": "file",
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "COPY",
+          "time": "2023-04-20T03:10:53Z",
+          "is_nop": true,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:58ab899f68efd59dbb0bf80eeff9a72ccdf2d81e140d8bbdea5e36ee8ddfb040",
+          "layer_index": 0,
+          "size": 746,
+          "size_human": "746 B",
+          "params": "file:7c7da75c130f12fb246fde6e58b6e1479a78d0262a988b5da6cc0cba78824986 in init.sh",
+          "command_snippet": "COPY file:7c7da75c130f12fb246fde6e58b6e1479a...",
+          "command_all": "COPY file:7c7da75c130f12fb246fde6e58b6e1479a78d0262a988b5da6cc0cba78824986 init.sh",
+          "target": "init.sh",
+          "source_type": "file",
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "COPY",
+          "time": "2023-04-20T03:10:56Z",
+          "is_nop": true,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:bb794f4bbed4e28cf88009856056e346d9c4584415cc99c13e787642a92fb72c",
+          "layer_index": 0,
+          "size": 439072136,
+          "size_human": "439 MB",
+          "params": "multi:a543db8ddc8a4293ccfef470156237c9a4f69c279bd80611883cc2004e53b32e in /usr/lib/",
+          "command_snippet": "COPY multi:a543db8ddc8a4293ccfef470156237c9a...",
+          "command_all": "COPY multi:a543db8ddc8a4293ccfef470156237c9a4f69c279bd80611883cc2004e53b32e /usr/lib/",
+          "target": "/usr/lib/",
+          "source_type": "multi",
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "COPY",
+          "time": "2023-04-20T03:10:57Z",
+          "is_nop": true,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:db3ea2dd4304e0b228c7e8f4cbcca09a5cc84a691e4dbd83cffed2cf1980a517",
+          "layer_index": 0,
+          "size": 98445544,
+          "size_human": "98 MB",
+          "params": "file:815bba1640ce598a777a5021e3f1023f1a000d1b901d95a78379247f80440407 in /usr/bin/envoy",
+          "command_snippet": "COPY file:815bba1640ce598a777a5021e3f1023f1a...",
+          "command_all": "COPY file:815bba1640ce598a777a5021e3f1023f1a000d1b901d95a78379247f80440407 /usr/bin/envoy",
+          "target": "/usr/bin/envoy",
+          "source_type": "file",
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "COPY",
+          "time": "2023-04-20T03:10:57Z",
+          "is_nop": true,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:f023e0e22f1374145b14ac7af05014a82cd12a430f3cf1d06a18e4285d27114b",
+          "layer_index": 0,
+          "size": 75260,
+          "size_human": "75 kB",
+          "params": "dir:e88d9d0db5590a8f5b2618ef5608c6e7ff2a152b048cbd7dbc1b7015cf487ae3 in runtime/",
+          "command_snippet": "COPY dir:e88d9d0db5590a8f5b2618ef5608c6e7ff2...",
+          "command_all": "COPY dir:e88d9d0db5590a8f5b2618ef5608c6e7ff2a152b048cbd7dbc1b7015cf487ae3 runtime/",
+          "target": "runtime/",
+          "source_type": "dir",
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "EXPOSE",
+          "time": "2023-04-20T03:10:57Z",
+          "is_nop": true,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:0a21cb7577630eeb4558c599fa910a4497ee2880abd3d7df0efecf6faa9f2564",
+          "layer_index": 0,
+          "size": 0,
+          "params": "50051",
+          "command_snippet": "EXPOSE 50051",
+          "command_all": "EXPOSE 50051",
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "EXPOSE",
+          "time": "2023-04-20T03:10:57Z",
+          "is_nop": true,
+          "local_image_exists": true,
+          "intermediate_image_id": "sha256:27b862651ab45bbd8cb1223989d5d3226d47074aad6b49de09f0e7ff6737a028",
+          "layer_index": 0,
+          "size": 0,
+          "params": "50052",
+          "command_snippet": "EXPOSE 50052",
+          "command_all": "EXPOSE 50052",
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        },
+        {
+          "type": "ENTRYPOINT",
+          "time": "2023-04-20T03:10:57Z",
+          "is_last_instruction": true,
+          "is_nop": true,
+          "is_exec_form": true,
+          "local_image_exists": true,
+          "layer_index": 0,
+          "size": 0,
+          "params": "[\"./init.sh\"]\n",
+          "command_snippet": "ENTRYPOINT [\"./init.sh\"]\n",
+          "command_all": "ENTRYPOINT [\"./init.sh\"]\n",
+          "raw_tags": [
+            "anansi-embeddings:raw"
+          ],
+          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_index": 1
+        }
+      ]
+    }
+  ],
+  "image_created": true,
+  "image_build_engine": "docker"
+}

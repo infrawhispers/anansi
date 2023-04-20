@@ -1,0 +1,18 @@
+version: v1
+managed:
+  enabled: true
+  go_package_prefix:
+    default: github.com/oshun
+plugins:
+  - name: cpp
+    out: ../runtime
+    # opt: paths=source_relative
+  # - name: cpp
+  #   out: ../runtime
+  #   opt: paths=source_relative
+  # - name: go-grpc
+  #   out: ../backend/proto
+  #   opt: paths=source_relative
+  # - name: js
+  #   out: ../frontend/public/protos
+  #   opt: import_style=commonjs,binary
