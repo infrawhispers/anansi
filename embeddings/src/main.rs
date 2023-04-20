@@ -11,6 +11,7 @@ use tokio::{signal, task};
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_util::sync::CancellationToken;
 use tonic::{transport::Server, Code, Request, Response, Status};
+use tonic_health::server::HealthReporter;
 use tracing::{info, warn, Level};
 
 use embeddings::api::api_server::{Api, ApiServer};
@@ -366,11 +367,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     .add_service(reflection_server)
     //     .serve_with_incoming(TcpListenerStream::new(listener))
     //     .await?;
+    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<ApiServer<ApiServerImpl>>()
+        .await;
     let token = CancellationToken::new();
     let cloned_token_1 = token.clone();
     let cloned_token_2 = token.clone();
     let grpc_server = Server::builder()
         .add_service(ApiServer::new(apiserver))
+        .add_service(health_service)
         .add_service(reflection_server)
         .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async {
             let _ = cloned_token_1.cancelled().await;
