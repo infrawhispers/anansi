@@ -50,7 +50,7 @@ impl EmbedderManager {
     pub fn new(model_path: &PathBuf) -> anyhow::Result<Self> {
         let ort_environment = Arc::new(
             Environment::builder()
-                .with_name("anansi.managed")
+                .with_name("embedds.ort")
                 .with_execution_providers([ExecutionProvider::cuda(), ExecutionProvider::cpu()])
                 .build()?,
         );
@@ -67,7 +67,7 @@ impl EmbedderManager {
         &self,
         model_name: &str,
         num_threads: u32,
-        providers: Vec<ExecutionProvider>,
+        parallel_execution: bool,
     ) -> anyhow::Result<()> {
         let model_identifier;
         match model_name.split_once('_') {
@@ -87,7 +87,7 @@ impl EmbedderManager {
                         model_path: path.as_path(),
                         model_name: model_identifier,
                         num_threads: num_threads as i16,
-                        providers: &providers,
+                        parallel_execution: parallel_execution,
                         ort_environment: self.ort_environment.clone(),
                         img_processor: self.img_processor.clone(),
                     })?;
@@ -103,7 +103,7 @@ impl EmbedderManager {
                         model_path: path.as_path(),
                         model_name: model_identifier,
                         num_threads: num_threads as i16,
-                        providers: &providers,
+                        parallel_execution: parallel_execution,
                         ort_environment: self.ort_environment.clone(),
                         img_processor: self.img_processor.clone(),
                     })?;

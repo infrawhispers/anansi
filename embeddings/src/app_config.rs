@@ -21,7 +21,7 @@ pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSe
                 ))?
                 .into(),
             num_threads: 4,
-            devices: Vec::new(),
+            parallel_execution: true,
         }]);
     }
     let mut f = File::open(config_path)?;
@@ -47,7 +47,7 @@ pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSe
                     ))?
                     .into(),
                 num_threads: 4,
-                devices: Vec::new(),
+                parallel_execution: true,
             };
             match doc["models"][idx_model]["name"].as_str() {
                 Some(model_name) => {
@@ -70,6 +70,19 @@ pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSe
                     None => {
                         bail!(
                             "[config] model at idx: {} has invalid num_threads",
+                            idx_model
+                        )
+                    }
+                }
+            }
+            if !doc["models"][idx_model]["parallel_execution"].is_badvalue() {
+                match doc["models"][idx_model]["parallel_execution"].as_bool() {
+                    Some(pe) => {
+                        config.parallel_execution = pe;
+                    }
+                    None => {
+                        bail!(
+                            "[config] model at idx: {} has invalid parallel_execution",
                             idx_model
                         )
                     }

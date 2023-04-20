@@ -73,6 +73,8 @@ impl ApiServerImpl {
         } else {
             num_threads = m.num_threads
         }
+        let parallel_execution = m.parallel_execution;
+
 
         // let providers: Vec<ExecutionProvider>;
         // match self.to_execution_providers(req.devices) {
@@ -87,7 +89,11 @@ impl ApiServerImpl {
 
         let mgr = self.mgr.clone();
         let t = task::spawn_blocking(move || {
-            mgr.initialize_model(model_name.as_str_name(), num_threads, Vec::new())
+            mgr.initialize_model(
+                model_name.as_str_name(),
+                num_threads,
+                parallel_execution,
+            )
         });
         // let res;
         match t.await {

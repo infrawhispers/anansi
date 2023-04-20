@@ -6,4 +6,5 @@ models:
   #   devices: []
   - name: M_INSTRUCTOR_BASE
     num_threads: 4
+    parallel_execution: true
   #   devices: []

@@ -7,7 +7,7 @@ message InitializeModelRequest { repeated ModelSettings models = 1; }
 message ModelSettings {
   EncodingModel model_name = 1;
   uint32 num_threads = 2;
-  repeated EncodingModelDevice devices = 3;
+  bool parallel_execution = 3;
 }
 
 enum EncodingModelDevice {

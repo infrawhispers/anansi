@@ -8,7 +8,7 @@ pub struct EmbedderParams<'a> {
     pub model_path: &'a Path,
     pub model_name: &'a str,
     pub num_threads: i16,
-    pub providers: &'a [ExecutionProvider],
+    pub parallel_execution: bool,
     pub ort_environment: Arc<Environment>,
     pub img_processor: Arc<ImageProcessor>,
 }

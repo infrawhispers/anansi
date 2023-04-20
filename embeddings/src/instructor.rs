@@ -7,7 +7,7 @@ use ndarray::Dim;
 use ndarray::{array, s, Array, Array1};
 use ort::{
     tensor::DynOrtTensor, tensor::FromArray, tensor::InputTensor, tensor::OrtOwnedTensor,
-    GraphOptimizationLevel, Session, SessionBuilder,
+    GraphOptimizationLevel, Session, SessionBuilder, ExecutionProvider,
 };
 use phf::phf_map;
 use tokenizers::tokenizer::Tokenizer;
@@ -204,7 +204,7 @@ impl InstructorEmbedder {
         let session = SessionBuilder::new(&params.ort_environment)?
             .with_optimization_level(GraphOptimizationLevel::Level1)?
             .with_inter_threads(params.num_threads)?
-            .with_parallel_execution(true)?
+            .with_parallel_execution(params.parallel_execution)?
             .with_model_from_file(model_file_path)?;
 
         let tokenizer: Tokenizer;
