@@ -37,7 +37,6 @@ def handle_instructor_evaluate(model_name: str, output_folder: Path):
         },
     )
     assert existing_output.shape == result[-1].shape
-    num_mismatches = 0
     assert (
         np.allclose(result[-1], existing_output, atol=1e-04),
         "the diff between the PyTORCH model and ONNX is > 1e-04",
