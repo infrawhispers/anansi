@@ -39,7 +39,6 @@ build-slim-cpu:
 		--target anansi-embeddings:raw
 
 build-slim:
-	docker build . -t anansi-embeddings:raw && \
 	slim build --http-probe=false --publish-port 0.0.0.0:50051:50051 \
 		--publish-port 0.0.0.0:50052:50052 --mount $(PWD)/.cache:/app/.cache --include-path \
 		/var/log/supervisord --include-path=/app/runtime \

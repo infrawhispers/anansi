@@ -46,11 +46,11 @@
       "exe_path": ""
     }
   },
-  "minified_image_size": 267507448,
-  "minified_image_size_human": "268 MB",
-  "minified_image": "anansi.embeddings:latest-cpu",
+  "minified_image_size": 667127896,
+  "minified_image_size_human": "667 MB",
+  "minified_image": "anansi.embeddings:latest",
   "minified_image_has_data": true,
-  "minified_by": 6.67506707701088,
+  "minified_by": 2.6765934533788407,
   "artifact_location": "/tmp/slim-state/.slim-state/images/5191e001885fee2810acd9f908833a59a112fc3d033bcc0405120b30e98d6dfd/artifacts",
   "container_report_name": "creport.json",
   "seccomp_profile_name": "anansi-embeddings-seccomp.json",
