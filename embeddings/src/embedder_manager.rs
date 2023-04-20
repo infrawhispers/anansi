@@ -78,7 +78,7 @@ impl EmbedderManager {
         }
         let m: Arc<dyn embedder::Embedder>;
         match model_identifier {
-            "INSTRUCTOR" => {
+            "INSTRUCTOR_LARGE" | "INSTRUCTOR_BASE" | "INSTRUCTOR_XL" => {
                 let mut path = self.model_path.clone();
                 path.push("instructor");
                 // "../model-transform/instructor_w_ctx_mask.onnx",

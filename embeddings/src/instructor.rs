@@ -9,6 +9,7 @@ use ort::{
     tensor::DynOrtTensor, tensor::FromArray, tensor::InputTensor, tensor::OrtOwnedTensor,
     GraphOptimizationLevel, Session, SessionBuilder,
 };
+use phf::phf_map;
 use tokenizers::tokenizer::Tokenizer;
 
 use crate::embedder::{Embedder, EmbedderParams, EmebeddingRequest, InstructorParams};
@@ -36,6 +37,12 @@ impl Embedder for InstructorEmbedder {
 
 static EMBEDDING_LENGTH: usize = 768;
 static S3_BUCKET_URI: &'static str = "https://d1wz516niig2xr.cloudfront.net/models.getanansi.com/";
+
+static INSTUCTOR_MODELS: phf::Map<&'static str, &'static str> = phf_map! {
+    "INSTRUCTOR_LARGE" => "instructor_large.onnx",
+    "INSTRUCTOR_BASE" => "instructor_base.onnx",
+    "INSTRUCTOR_XL" => "instructor_xl.onnx",
+};
 
 impl InstructorEmbedder {
     fn gen_encodings(
@@ -152,15 +159,21 @@ impl InstructorEmbedder {
         Ok(result)
     }
     pub fn new(params: &EmbedderParams) -> anyhow::Result<Self> {
-        let model_name = "instructor_w_ctx_mask_v2.onnx";
+        let model_filename;
+        match INSTUCTOR_MODELS.get(params.model_name) {
+            Some(name) => model_filename = name,
+            None => {
+                bail!("INSTRUCTOR_MODEL: {} was not found", params.model_name)
+            }
+        }
         if !params.model_path.exists() {
             fs::create_dir_all(params.model_path)?;
         }
-        let model_file_path = PathBuf::from(params.model_path).join(model_name);
+        let model_file_path = PathBuf::from(params.model_path).join(model_filename);
         if !model_file_path.exists() {
             download_model_sync(
-                model_name,
-                &format!("{}/instructor/{}", S3_BUCKET_URI, model_name),
+                params.model_name,
+                &format!("{}/instructor/{}", S3_BUCKET_URI, model_filename),
                 true,
                 &model_file_path,
                 "8f829d4c1714de7c25872fdafab633aa",

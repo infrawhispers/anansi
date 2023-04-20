@@ -32,7 +32,7 @@ pub struct BinaryArgs {
     #[clap(flatten)]
     port: Port,
     /// configuration for the embedding models to be loaded on startup
-    #[clap(long, short = 'c', default_value = "config.yml")]
+    #[clap(long, short = 'c', default_value = "/app/runtime/config.yaml")]
     config: PathBuf,
     /// folder in which embedding models will be downloaded and cached
     #[clap(long, short = 'f', default_value = ".cache")]
@@ -146,7 +146,9 @@ impl ApiServerImpl {
                 }
             }
             match x {
-                EncodingModel::MInstructor => {
+                EncodingModel::MInstructorLarge |
+                EncodingModel::MInstructorXl |
+                EncodingModel::MInstructorBase => {
                     if data[i].text.len() != data[i].instructions.len() {
                         return Err(Status::new(
                             Code::InvalidArgument,
