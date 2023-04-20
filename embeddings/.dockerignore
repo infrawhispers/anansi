@@ -1,3 +1,9 @@
-/target/
-/.cache/
-/model_transform/
+infra/**/*
+infra/
+target/
+target/**/*
+.cache/
+.cache/**/*
+model_transform/.onnx_output
+model_transform/.onnx_output/**/*
+*.onnx

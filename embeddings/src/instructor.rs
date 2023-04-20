@@ -51,7 +51,7 @@ static INSTUCTOR_MODELS: phf::Map<&'static str, ModelDetails> = phf_map! {
     },
     "INSTRUCTOR_BASE" => ModelDetails {
         filename: "instructor_base.onnx",
-        hash_val: "72c15eca9cd2e5167c42104a00497354",
+        hash_val: "5e4fc0a3f8957600243407525f44e4b3",
     },
     "INSTRUCTOR_XL" => ModelDetails {
         filename: "instructor_xl.onnx",
