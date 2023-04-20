@@ -58,7 +58,7 @@ curl \
 -X POST http://host.docker.internal:50052/encode \
 -H 'Content-Type: application/json' \
 -d '{"data": [{
-        "model": "M_CLIP_VIT_L_14_336_OPENAI",
+        "model": "M_INSTRUCTOR_LARGE",
         "text": [
             "3D ActionSLAM: wearable person tracking ...",
             "Tracking early lung cancer metastatic..."
@@ -146,7 +146,7 @@ models:
 
 This configuration would create ONE `CLIP_VIT_L_14_336` and TWO `M_INSTRUCTOR_LARGE` models. This is useful for running multiple embedding models on a single GPU. The list of devices and available models can be found [here](https://github.com/infrawhispers/anansi/blob/main/embeddings/proto/api.proto). By default, embedds will instantiate one instance of [M_INSTRUCTOR_LARGE](https://huggingface.co/hkunlp/instructor-large).
 
-### Running a Server
+### Tips & Recommendations
 
 We recommend having a volume mount for the cache folder in order to speed up startup and prevent repeated downloads.
 
