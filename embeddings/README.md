@@ -1,19 +1,20 @@
-# Embedds
+# embedds 🛏
 
-Emebedds is a general-purpose embedding service that converts text and images into multi-dimensional vectors. We are focused on providing turn-key access to embedding models available on the [Massive Text Embedding](https://huggingface.co/spaces/mteb/leaderboard) leaderboard.
+emebedds is a general-purpose embedding service that converts text and images into multi-dimensional vectors. It is focused on providing turn-key access to embedding models available on the [Massive Text Embedding](https://huggingface.co/spaces/mteb/leaderboard) leaderboard.
 
 ## Getting Started
-A server is available at api.embeddings.getanansi.com loaded with `M_CLIP_VIT_L_14_336_OPENAI` for testing purposes that accepts gRPC requests. Here is an example using grpcurl: 
+A server is available at <b>api.embeddings.getanansi.com</b> loaded with `M_CLIP_VIT_L_14_336_OPENAI` for testing purposes that accepts gRPC requests. Here is an example using grpcurl: 
 
 <table>
 <tr>
-<td> grpcurl 🏄 </td>
+<td> request 🏄 </td>
 <td> response 🚀 </td>
 </tr>
 <tr>
 <td>
 
 ```bash
+# brew install grpcurl
 grpcurl -d '{
     "data":[{
         "model":"M_CLIP_VIT_L_14_336_OPENAI",
@@ -47,13 +48,32 @@ grpcurl -d '{
 </tr>
 </table>
 
+embedds also provides a HTTP endpoint (via [envoy](https://www.envoyproxy.io/docs/envoy/v1.26.0/)) allowing you to accomplish the above using a simple curl:
+```
+curl \
+-X POST http://host.docker.internal:50052/encode \
+-H 'Content-Type: application/json' \
+-d '{"data": [{
+        "model": "M_CLIP_VIT_L_14_336_OPENAI",
+        "text": [
+            "3D ActionSLAM: wearable person tracking ...",
+            "Tracking early lung cancer metastatic..."
+        ],
+        "instructions": [
+            "Represent the Science title:",
+            "Represent the Nature title:"
+        ]}
+    ]}
+'
+```
+
 ## Getting Started
 The easiest way to get started locally is to use one of the docker images we publish here. There are two primary options:
 * latest - includes CUDA and libcudnn bindings to support GPU and CPU accelerated inference.
 * latest-cpu - a minimial image, lacking CUDA + libcuddn dylibs that allows for **only** CPU inference.
 
-Both options are loaded with envoy, which provides JSON <-> GRPC transcoding. We will include details on building from
-source and packaging for even lighter images below.
+<!-- Both options are loaded with envoy, which provides JSON <-> GRPC transcoding. We will include details on building from
+source and packaging for even lighter images below. -->
 
 The list of environment variables that are supported are as follows:
 <table>
@@ -87,6 +107,6 @@ The list of environment variables that are supported are as follows:
 
 ```EMBEDDS_CACHE_FOLDER```
 </td>
-<td><p>folder in which to store the cached model files - these are typically on the order of ~100s of MBs </p></td>
+<td><p>folder in which to store the cached model files - these are typically on the order of ~100s of MBs and can grow to GBs if you bin-pack multiple models</p></td>
 </tr>
 </table>
