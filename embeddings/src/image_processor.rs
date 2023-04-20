@@ -1,5 +1,6 @@
 use std::io::Cursor;
 use std::sync::Arc;
+use std::thread::available_parallelism;
 
 use image::io::Reader as ImageReader;
 use image::GenericImageView;
@@ -20,6 +21,12 @@ pub struct ImageProcessor {
 impl ImageProcessor {
     pub fn new() -> anyhow::Result<Self> {
         let libvips_app = Arc::new(VipsApp::new("libvips-processor", false)?);
+        let mut num_threads = 4;
+        match available_parallelism() {
+            Ok(ap) => num_threads = ap.get().try_into()?,
+            Err(err) => {}
+        }
+        libvips_app.concurrency_set(num_threads);
         Ok(ImageProcessor {
             libvips_app: libvips_app,
         })
