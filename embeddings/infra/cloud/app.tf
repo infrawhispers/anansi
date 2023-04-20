@@ -75,6 +75,12 @@ resource "aws_alb" "embeddings-lb" {
   enable_http2       = true
 }
 
+# resource "aws_alb" "embeddings-lb-http" {
+#   name               = "embeddings-lb-http"
+#   internal           = false
+#   load_balancer_type = "application"
+# }
+
 resource "aws_lb_listener" "embeddings-lb-grpc" {
   load_balancer_arn = aws_alb.embeddings-lb.arn
   port              = "50051"
@@ -114,14 +120,20 @@ resource "aws_lb_target_group" "embeddings-lb-tg-grpc" {
   }
 }
 resource "aws_lb_target_group" "embeddings-lb-tg-http" {
-  name        = "embeddings-lb-tg-http"
-  port        = 50052
-  protocol    = "HTTP"
-  target_type = "instance"
-  vpc_id      = aws_vpc.main.id
-  # health_check {
-  #   enabled = false
-  # }
+  name             = "embeddings-lb-tg-http"
+  port             = 50052
+  protocol         = "HTTP"
+  protocol_version = "HTTP1"
+  target_type      = "instance"
+  vpc_id           = aws_vpc.main.id
+  health_check {
+    enabled             = true
+    matcher             = "200"
+    path                = "/health"
+    port                = 50053
+    protocol            = "HTTP"
+    unhealthy_threshold = 5
+  }
 }
 
 

@@ -21,7 +21,7 @@
   },
   "source_image": {
     "identity": {
-      "id": "sha256:74177495a8ba45d2450932171bc2ccdfe57a551faf6bdf1f3a8b1f25201b6115",
+      "id": "sha256:5191e001885fee2810acd9f908833a59a112fc3d033bcc0405120b30e98d6dfd",
       "tags": [
         "raw"
       ],
@@ -29,9 +29,9 @@
         "anansi-embeddings:raw"
       ]
     },
-    "size": 1785625464,
+    "size": 1785630159,
     "size_human": "1.8 GB",
-    "create_time": "2023-04-20T03:10:57Z",
+    "create_time": "2023-04-20T16:11:09Z",
     "docker_version": "20.10.12",
     "architecture": "amd64",
     "exposed_ports": [
@@ -46,12 +46,12 @@
       "exe_path": ""
     }
   },
-  "minified_image_size": 267506413,
+  "minified_image_size": 267507448,
   "minified_image_size_human": "268 MB",
   "minified_image": "anansi.embeddings:latest-cpu",
   "minified_image_has_data": true,
-  "minified_by": 6.675075352305666,
-  "artifact_location": "/tmp/slim-state/.slim-state/images/74177495a8ba45d2450932171bc2ccdfe57a551faf6bdf1f3a8b1f25201b6115/artifacts",
+  "minified_by": 6.67506707701088,
+  "artifact_location": "/tmp/slim-state/.slim-state/images/5191e001885fee2810acd9f908833a59a112fc3d033bcc0405120b30e98d6dfd/artifacts",
   "container_report_name": "creport.json",
   "seccomp_profile_name": "anansi-embeddings-seccomp.json",
   "apparmor_profile_name": "anansi-embeddings-apparmor-profile",
@@ -105,24 +105,24 @@
     },
     {
       "is_top_image": true,
-      "id": "sha256:74177495a8ba45d2450932171bc2ccdfe57a551faf6bdf1f3a8b1f25201b6115",
+      "id": "sha256:5191e001885fee2810acd9f908833a59a112fc3d033bcc0405120b30e98d6dfd",
       "full_name": "anansi-embeddings:raw",
       "repo_name": "anansi-embeddings",
       "version_tag": "raw",
       "raw_tags": [
         "anansi-embeddings:raw"
       ],
-      "create_time": "2023-04-20T03:10:57Z",
-      "new_size": 1716363933,
+      "create_time": "2023-04-20T16:11:09Z",
+      "new_size": 1716368628,
       "new_size_human": "1.7 GB",
       "base_image_id": "sha256:92a9b50a62b45ede9878156909ea76de9d04716aa0cdfe175bd2d28e34b87149",
       "instructions": [
         {
           "type": "RUN",
-          "time": "2023-04-20T03:10:52Z",
+          "time": "2023-04-20T16:11:03Z",
           "is_nop": false,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:cba3350c66cabcd1785832fa83fb0abaad1d14cb875528dbf24da465a7c299f9",
+          "intermediate_image_id": "sha256:ab48822af58c6b00f3f151aca00d16c8cd09937fb4a149f11b0a851bdf0101f6",
           "layer_index": 0,
           "size": 1155339719,
           "size_human": "1.2 GB",
@@ -134,15 +134,15 @@
             "apt-get clean",
             "rm -rf /var/lib/apt/lists/*"
           ],
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "WORKDIR",
-          "time": "2023-04-20T03:10:53Z",
+          "time": "2023-04-20T16:11:04Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:545f6ddbfc92a73d24d5d3bc9efc5ec5a85cc6ad20788b5e9dd84060c4819183",
+          "intermediate_image_id": "sha256:ca47bb8a9473be009abda87761e3c6aafcfea78f68906d13f23bfb920bf3c928",
           "layer_index": 0,
           "size": 0,
           "params": "/app",
@@ -151,15 +151,15 @@
           "system_commands": [
             "mkdir -p /app"
           ],
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "RUN",
-          "time": "2023-04-20T03:10:53Z",
+          "time": "2023-04-20T16:11:04Z",
           "is_nop": false,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:2bae27dfce5f8a59b7f63a996d1048cc2e82a7c652c2a966ca2719e31bfec374",
+          "intermediate_image_id": "sha256:8bdf3e1810a3987e0f5b0087a2eeb3ece3f8c63f6a5f16cf9896c2eb5f00da30",
           "layer_index": 0,
           "size": 0,
           "command_snippet": "RUN mkdir .cache && \\\n\tmkdir /var/log/superv...",
@@ -168,15 +168,15 @@
             "mkdir .cache",
             "mkdir /var/log/supervisord"
           ],
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T03:10:53Z",
+          "time": "2023-04-20T16:11:05Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:372435a6db6e3124441bca77cdc186d79800a74fbfab267d2a690171604a0088",
+          "intermediate_image_id": "sha256:5affa966eda81fb0778911b2f179cdef61d25d34b9d6fe7aee10783859838108",
           "layer_index": 0,
           "size": 23430528,
           "size_human": "23 MB",
@@ -185,15 +185,15 @@
           "command_all": "COPY file:20223bcd875579995fe20bfb4511e4edc3c7f23c936cd9420608d794e2985cc8 embedding-server",
           "target": "embedding-server",
           "source_type": "file",
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T03:10:53Z",
+          "time": "2023-04-20T16:11:05Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:58ab899f68efd59dbb0bf80eeff9a72ccdf2d81e140d8bbdea5e36ee8ddfb040",
+          "intermediate_image_id": "sha256:5951699f5381c5a67505144275fee85fd897c02407b8446284859220bc0b6bbe",
           "layer_index": 0,
           "size": 746,
           "size_human": "746 B",
@@ -202,15 +202,15 @@
           "command_all": "COPY file:7c7da75c130f12fb246fde6e58b6e1479a78d0262a988b5da6cc0cba78824986 init.sh",
           "target": "init.sh",
           "source_type": "file",
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T03:10:56Z",
+          "time": "2023-04-20T16:11:08Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:bb794f4bbed4e28cf88009856056e346d9c4584415cc99c13e787642a92fb72c",
+          "intermediate_image_id": "sha256:b7a53da861805cb7775dab98885d268fad45e742b47938124f1956e44e381311",
           "layer_index": 0,
           "size": 439072136,
           "size_human": "439 MB",
@@ -219,15 +219,15 @@
           "command_all": "COPY multi:a543db8ddc8a4293ccfef470156237c9a4f69c279bd80611883cc2004e53b32e /usr/lib/",
           "target": "/usr/lib/",
           "source_type": "multi",
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T03:10:57Z",
+          "time": "2023-04-20T16:11:08Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:db3ea2dd4304e0b228c7e8f4cbcca09a5cc84a691e4dbd83cffed2cf1980a517",
+          "intermediate_image_id": "sha256:d54377d8756b59a159fd5291ed2b923e5387fe6fa9dac1493df85e89da7a227c",
           "layer_index": 0,
           "size": 98445544,
           "size_human": "98 MB",
@@ -236,57 +236,57 @@
           "command_all": "COPY file:815bba1640ce598a777a5021e3f1023f1a000d1b901d95a78379247f80440407 /usr/bin/envoy",
           "target": "/usr/bin/envoy",
           "source_type": "file",
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T03:10:57Z",
+          "time": "2023-04-20T16:11:08Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:f023e0e22f1374145b14ac7af05014a82cd12a430f3cf1d06a18e4285d27114b",
+          "intermediate_image_id": "sha256:bc6ab1126ae34d2f3aa2c0c69465e0de6396cdf5710035a2b99af3fb9256698f",
           "layer_index": 0,
-          "size": 75260,
-          "size_human": "75 kB",
-          "params": "dir:e88d9d0db5590a8f5b2618ef5608c6e7ff2a152b048cbd7dbc1b7015cf487ae3 in runtime/",
-          "command_snippet": "COPY dir:e88d9d0db5590a8f5b2618ef5608c6e7ff2...",
-          "command_all": "COPY dir:e88d9d0db5590a8f5b2618ef5608c6e7ff2a152b048cbd7dbc1b7015cf487ae3 runtime/",
+          "size": 79955,
+          "size_human": "80 kB",
+          "params": "dir:8d9721210808dc92c8186a334a5cfc91a7f4f040e80fa90def0abdf8063b6f8a in runtime/",
+          "command_snippet": "COPY dir:8d9721210808dc92c8186a334a5cfc91a7f...",
+          "command_all": "COPY dir:8d9721210808dc92c8186a334a5cfc91a7f4f040e80fa90def0abdf8063b6f8a runtime/",
           "target": "runtime/",
           "source_type": "dir",
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "EXPOSE",
-          "time": "2023-04-20T03:10:57Z",
+          "time": "2023-04-20T16:11:09Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:0a21cb7577630eeb4558c599fa910a4497ee2880abd3d7df0efecf6faa9f2564",
+          "intermediate_image_id": "sha256:079cfbde12d4d33a2d51c5188c4a3863c61339ac48de09e75ebc192428401c55",
           "layer_index": 0,
           "size": 0,
           "params": "50051",
           "command_snippet": "EXPOSE 50051",
           "command_all": "EXPOSE 50051",
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "EXPOSE",
-          "time": "2023-04-20T03:10:57Z",
+          "time": "2023-04-20T16:11:09Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:27b862651ab45bbd8cb1223989d5d3226d47074aad6b49de09f0e7ff6737a028",
+          "intermediate_image_id": "sha256:684a4d5777c39688c7e688c323371893b6951d615cd4110ef938740cf1a0a027",
           "layer_index": 0,
           "size": 0,
           "params": "50052",
           "command_snippet": "EXPOSE 50052",
           "command_all": "EXPOSE 50052",
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         },
         {
           "type": "ENTRYPOINT",
-          "time": "2023-04-20T03:10:57Z",
+          "time": "2023-04-20T16:11:09Z",
           "is_last_instruction": true,
           "is_nop": true,
           "is_exec_form": true,
@@ -299,7 +299,7 @@
           "raw_tags": [
             "anansi-embeddings:raw"
           ],
-          "inst_set_time_bucket": "2023-04-19T23:00:00-04:00",
+          "inst_set_time_bucket": "2023-04-20T12:00:00-04:00",
           "inst_set_time_index": 1
         }
       ]

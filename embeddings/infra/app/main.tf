@@ -10,16 +10,19 @@ resource "aws_ecs_service" "embedds-app" {
     type  = "binpack"
     field = "cpu"
   }
+
   load_balancer {
     target_group_arn = "arn:aws:elasticloadbalancing:us-east-2:151946447080:targetgroup/embeddings-lb-tg-grpc/ffc99a0bcf98fa29"
     container_name   = "app"
     container_port   = 50051
   }
+  
   # load_balancer {
-  #   target_group_arn = "arn:aws:elasticloadbalancing:us-east-2:151946447080:targetgroup/embeddings-lb-tg-grpc/6a1f58a7a9eb953b"
+  #   target_group_arn = "arn:aws:elasticloadbalancing:us-east-2:151946447080:targetgroup/embeddings-lb-tg-http/1309cf1b6359fe7b"
   #   container_name   = "app"
   #   container_port   = 50052
   # }
+
   placement_constraints {
     type       = "memberOf"
     expression = "attribute:ecs.availability-zone in [us-east-2a, us-east-2b, us-east-2c]"
@@ -33,6 +36,7 @@ resource "aws_ecs_service" "embedds-app" {
   #   security_groups = ["sg-04a1b50c33d4ed86b"]
   # }
 }
+
 
 resource "aws_ecs_task_definition" "embedds-task" {
   family             = "embedds"

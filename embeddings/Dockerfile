@@ -46,7 +46,7 @@ COPY --from=cacher /app/target/release/libonnxruntime* /usr/lib/
 COPY --from=envoy-runtime /usr/bin/envoy /usr/bin/envoy
 COPY runtime/ runtime/
 # envoy binds the HTTP listener to 50052
+# rust binds the HTTP2 listener to 50051
 EXPOSE 50051
-# rust grpc-server binds to 50051
 EXPOSE 50052 
 ENTRYPOINT ["./init.sh"]
