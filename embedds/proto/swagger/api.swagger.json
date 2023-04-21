@@ -1,0 +1,324 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "embedds",
+    "version": "1.0",
+    "contact": {
+      "name": "anansi",
+      "url": "https://github.com/infrawhispers/anansi",
+      "email": "infrawhispers@proton.me"
+    },
+    "license": {
+      "name": "Apache 2.0 License",
+      "url": "https://github.com/infrawhispers/anansi/blob/main/LICENSE"
+    }
+  },
+  "tags": [
+    {
+      "name": "Api"
+    }
+  ],
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/encode": {
+      "post": {
+        "summary": "generate embedding representations of text or images",
+        "description": "Generates a vector representation of text or images using the associated embeding model If the model does not exist or has not been loaded, content requests will be ignored.",
+        "operationId": "Api_Encode",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiEncodeResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiEncodeRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Api"
+        ],
+        "produces": [
+          "application/json"
+        ]
+      }
+    },
+    "/initalize": {
+      "post": {
+        "summary": "load and intialize an embedding model",
+        "description": "Embedding models are loaded from the folder pointed to by ```EMEBEDDS_CACHE_FOLDER```.\u003cb\u003eIf the model is missing\u003c/b\u003e the server will attempt to download the corresponding file from a remote source.",
+        "operationId": "Api_InitializeModel",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiInitializeModelResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiInitializeModelRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Api"
+        ],
+        "produces": [
+          "application/json"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "apiEncodeItem": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "$ref": "#/definitions/apiEncodingModel",
+          "description": "selected model to run the encoding process through"
+        },
+        "text": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "repeated text to encode"
+        },
+        "instructions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "a list of instructions to pass to ```INSTRUCTOR``` based models"
+        },
+        "image": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "byte"
+          },
+          "description": "repeated raw jpeg bytes"
+        },
+        "imageUri": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "repeated uris to fetch image data from"
+        }
+      },
+      "description": "Minimal encoding unit associating a piece of content [text, image, image_uri] with a selected model",
+      "required": [
+        "model"
+      ]
+    },
+    "apiEncodeRequest": {
+      "type": "object",
+      "example": {
+        "data": [
+          {
+            "model": "M_INSTRUCTOR_LARGE",
+            "text": [
+              "3D ActionSLAM: wearable person tracking ...",
+              "Inside Gohar World and the Fine, Fantastical Art"
+            ],
+            "instructions": [
+              "Represent the Science title:",
+              "Represent the Magazine title:"
+            ]
+          }
+        ]
+      },
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/apiEncodeItem"
+          },
+          "description": "repeated data items to generate encodings for"
+        }
+      }
+    },
+    "apiEncodeResponse": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/apiEncodeResult"
+          },
+          "description": "list of embedding results corresponding to the ordered content submitted"
+        }
+      }
+    },
+    "apiEncodeResult": {
+      "type": "object",
+      "properties": {
+        "errMessage": {
+          "type": "string",
+          "description": "explanation for why the content could not be encoded"
+        },
+        "embedding": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          },
+          "description": "embedding representation of the the content"
+        }
+      }
+    },
+    "apiEncodingModel": {
+      "type": "string",
+      "enum": [
+        "M_UNKNOWN",
+        "M_INSTRUCTOR_LARGE",
+        "M_INSTRUCTOR_XL",
+        "M_INSTRUCTOR_BASE",
+        "M_CLIP_RN50_OPENAI",
+        "M_CLIP_RN50_YFCC15M",
+        "M_CLIP_RN50_CC12M",
+        "M_CLIP_RN101_OPENAI",
+        "M_CLIP_RN101_YFCC15M",
+        "M_CLIP_RN50x4_OPENAI",
+        "M_CLIP_RN50x16_OPENAI",
+        "M_CLIP_RN50x64_OPENAI",
+        "M_CLIP_VIT_L_14_336_OPENAI"
+      ],
+      "default": "M_UNKNOWN",
+      "title": "- M_INSTRUCTOR_LARGE: instructor models\n - M_CLIP_RN50_OPENAI: clip models"
+    },
+    "apiInitializeModelRequest": {
+      "type": "object",
+      "properties": {
+        "models": {
+          "type": "array",
+          "example": [
+            {
+              "model_name": "M_INSTRUCTOR_BASE",
+              "num_threads": 4,
+              "parallel_execution": true
+            }
+          ],
+          "items": {
+            "$ref": "#/definitions/apiModelSettings"
+          },
+          "description": "A list of models to be initialized"
+        }
+      }
+    },
+    "apiInitializeModelResponse": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/apiModelInitResult"
+          }
+        }
+      }
+    },
+    "apiModelInitResult": {
+      "type": "object",
+      "properties": {
+        "modelName": {
+          "$ref": "#/definitions/apiEncodingModel",
+          "description": "identifier of model used for creation"
+        },
+        "initialized": {
+          "type": "boolean",
+          "description": "whether or not the model was successfully initalized"
+        },
+        "errMessage": {
+          "type": "string",
+          "description": "error details outlining why the model could not be initialized"
+        }
+      },
+      "description": "Configuration settings for the instantiaion of an onnx model",
+      "readOnly": true
+    },
+    "apiModelSettings": {
+      "type": "object",
+      "properties": {
+        "modelName": {
+          "$ref": "#/definitions/apiEncodingModel",
+          "description": "The specific embedding model to create"
+        },
+        "numThreads": {
+          "type": "integer",
+          "format": "int64",
+          "description": "The number of threads to parallelize the execution of the graph - if the graph can be parallelized. \u003cbr/\u003e If unset, defaults to the available parallelism on the underlying machine."
+        },
+        "parallelExecution": {
+          "type": "boolean",
+          "description": "Enable/disable the parallel execution of the graph. Parallel execution can improve model execution speed at the cost of increased memory usage."
+        }
+      },
+      "description": "Configuration settings for the instantiaion of an onnx model",
+      "required": [
+        "modelName"
+      ]
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    }
+  }
+}

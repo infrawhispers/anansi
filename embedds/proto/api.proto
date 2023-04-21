@@ -1,14 +1,54 @@
 syntax = "proto3";
 package api;
+
 import "google/api/annotations.proto";
 import "protoc-gen-openapiv2/options/annotations.proto";
 
-message InitializeModelRequest { repeated ModelSettings models = 1; }
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "embedds";
+    version: "1.0";
+    contact: {
+      name: "anansi";
+      url: "https://github.com/infrawhispers/anansi";
+      email: "infrawhispers@proton.me";
+    };
+    license: {
+      name: "Apache 2.0 License";
+      url: "https://github.com/infrawhispers/anansi/blob/main/LICENSE"
+    };
+  };
+  schemes: HTTPS;
+};
+
+message InitializeModelRequest {
+  repeated ModelSettings models = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+    description: "A list of models to be initialized"
+    example: '[{"model_name": "M_INSTRUCTOR_BASE", "num_threads": 4, "parallel_execution": true}]'
+  }];
+}
 
 message ModelSettings {
-  EncodingModel model_name = 1;
-  uint32 num_threads = 2;
-  bool parallel_execution = 3;
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      description:
+        "Configuration settings for the instantiaion of an onnx "
+        "model"
+      required: ["model_name"]
+    }
+  };
+  EncodingModel model_name = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "The specific embedding model to create"}];
+  uint32 num_threads = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+      "The number of threads to parallelize the execution of "
+      "the graph - if the graph can be parallelized. <br/> If "
+      "unset, defaults to the available parallelism on the "
+      "underlying machine."
+}];
+  bool parallel_execution = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+      "Enable/disable the parallel execution of the graph. "
+      "Parallel execution can improve model execution speed at "
+      "the cost of increased memory usage."
+}];
 }
 
 enum EncodingModelDevice {
@@ -18,11 +58,21 @@ enum EncodingModelDevice {
   MD_TENSOR = 3;
 }
 
-message InitializeModelResponse { repeated ModelInitResult results = 1; }
+message InitializeModelResponse {
+  repeated ModelInitResult results = 1;
+}
 message ModelInitResult {
-  EncodingModel model_name = 1;
-  bool initialized = 2;
-  string err_message = 3;
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      description:
+        "Configuration settings for the instantiaion of an onnx "
+        "model";
+      read_only: true
+    }
+  };
+  EncodingModel model_name = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "identifier of model used for creation"}];
+  bool initialized = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "whether or not the model was successfully initalized"}];
+  string err_message = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "error details outlining why the model could not be initialized"}];
 }
 
 enum EncodingModel {
@@ -44,38 +94,69 @@ enum EncodingModel {
 }
 
 message EncodeItem {
-  EncodingModel model = 1;
-  repeated string text = 2;
-  repeated string instructions = 3;
-  repeated bytes image = 4;
-  repeated string image_uri = 5;
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      description:
+        "Minimal encoding unit associating a piece of content "
+        "[text, image, image_uri] with a selected model"
+      required: ["model"]
+    }
+  };
+  EncodingModel model = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "selected model to run the encoding process through"}];
+  repeated string text = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated text to encode"}];
+  repeated string instructions = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+      "a list of instructions to pass to ```INSTRUCTOR``` "
+      "based models"
+}];
+  repeated bytes image = 4 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated raw jpeg bytes"}];
+  repeated string image_uri = 5 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated uris to fetch image data from"}];
 }
 message EncodeRequest {
-  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
-    example : "{\"uuid\": \"0cf361e1-4b44-483d-a159-54dabdf7e814\"}"
-  };
-  repeated EncodeItem data = 1;
-  string name = 2;
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {example: '{"data":[{"model":"M_INSTRUCTOR_LARGE","text":["3D ActionSLAM: wearable person tracking ...","Inside Gohar World and the Fine, Fantastical Art"],"instructions":["Represent the Science title:","Represent the Magazine title:"]}]}'};
+  repeated EncodeItem data = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated data items to generate encodings for"}];
 }
 
 message EncodeResult {
-  string err_message = 1;
-  repeated float embedding = 2;
+  string err_message = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "explanation for why the content could not be encoded"}];
+  repeated float embedding = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "embedding representation of the the content"}];
 }
-message EncodeResponse { repeated EncodeResult results = 1; }
+message EncodeResponse {
+  repeated EncodeResult results = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+      "list of embedding results corresponding to the ordered "
+      "content submitted"
+}];
+}
 
 service Api {
   rpc Encode(EncodeRequest) returns (EncodeResponse) {
     option (google.api.http) = {
-      post : "/encode"
-      body : "*"
+      post: "/encode"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "generate embedding representations of text or images";
+      description:
+        "Generates a vector representation of text or images using the associated "
+        "embeding model If the model does not exist or has not been loaded, "
+        "content requests will be ignored."
+      consumes: "application/json";
+      produces: "application/json";
     };
   }
-  rpc InitializeModel(InitializeModelRequest)
-      returns (InitializeModelResponse) {
+
+  rpc InitializeModel(InitializeModelRequest) returns (InitializeModelResponse) {
     option (google.api.http) = {
-      post : "/initalize"
-      body : "*"
+      post: "/initalize"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "load and intialize an embedding model";
+      description:
+        "Embedding models are loaded from the folder pointed to by "
+        "```EMEBEDDS_CACHE_FOLDER```.<b>If the model is missing</b> the server will "
+        "attempt to download the corresponding file from a remote source.";
+      consumes: "application/json";
+      produces: "application/json";
     };
   }
 }

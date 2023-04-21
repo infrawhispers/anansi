@@ -5,4 +5,4 @@ managed:
     default: github.com/oshun
 plugins:
   - name: openapiv2
-    out: gen
+    out: swagger
