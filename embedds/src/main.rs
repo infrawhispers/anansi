@@ -38,7 +38,7 @@ pub struct BinaryArgs {
     #[clap(long, short = 'f', default_value = ".cache")]
     model_folder: PathBuf,
     /// allow for administrative actions: [Initialize()]
-    #[clap(long, action=ArgAction::SetTrue)]
+    #[clap(long, default_value_t = false, action=ArgAction::Set)]
     allow_admin: bool,
 }
 
@@ -288,7 +288,8 @@ impl Api for ApiServerImpl {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = BinaryArgs::parse();
-
+    println!("the args are: {}", args.allow_admin);
+    println!("the address: {:?}", args.port);
     // STEP 1 - parse the model configs, iff a config.yaml was
     // not specified then we default to M_CLIP_VIT_L_14_336_OPENAI
     let model_configs: Vec<ModelSettings>;

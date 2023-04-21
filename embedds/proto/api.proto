@@ -1,6 +1,7 @@
 syntax = "proto3";
 package api;
 import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
 
 message InitializeModelRequest { repeated ModelSettings models = 1; }
 
@@ -50,9 +51,13 @@ message EncodeItem {
   repeated string image_uri = 5;
 }
 message EncodeRequest {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    example : "{\"uuid\": \"0cf361e1-4b44-483d-a159-54dabdf7e814\"}"
+  };
   repeated EncodeItem data = 1;
   string name = 2;
 }
+
 message EncodeResult {
   string err_message = 1;
   repeated float embedding = 2;
@@ -63,14 +68,14 @@ service Api {
   rpc Encode(EncodeRequest) returns (EncodeResponse) {
     option (google.api.http) = {
       post : "/encode"
-      body: "*"
+      body : "*"
     };
   }
   rpc InitializeModel(InitializeModelRequest)
       returns (InitializeModelResponse) {
     option (google.api.http) = {
       post : "/initalize"
-      body: "*"
+      body : "*"
     };
   }
 }

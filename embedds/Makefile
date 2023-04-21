@@ -2,7 +2,7 @@ gen-pb:
 	protoc -I$(GOOGLEAPIS_DIR) -I ./proto \
 		--descriptor_set_out=runtime/api.pb --include_source_info \
 		--include_imports ./proto/api.proto 
-		
+
 build-n-run:
 	docker build . -t anansi-embeddings && \
 	docker run -v $(PWD)/.cache:/app/.cache -p 0.0.0.0:50051:50051 \
@@ -18,6 +18,7 @@ run-cpu:
 		-v $(PWD)/.cache:/app/.cache anansi.embeddings:latest-cpu
 
 run-dev:
+	docker build . -t anansi-embeddings:cacher --target cacher && \
 	docker run -p  0.0.0.0:50051:50051 -p 0.0.0.0:50052:50052 \
 		-v $(PWD)/src:/app/src \
 		-v $(PWD)/proto:/app/proto \

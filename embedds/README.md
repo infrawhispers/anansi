@@ -75,7 +75,7 @@ curl \
 
 ### Image & Env Variables
 
-The easiest way to get started locally is to use one of the docker images we publish here:
+The easiest way to get started locally is to use one of the docker images we publish on DockerHub:
 
 - [latest](https://hub.docker.com/repository/docker/infrawhispers/anansi/tags?page=1&ordering=last_updated&name=embeddings-latest) - includes CUDA and libcudnn bindings to support GPU and CPU accelerated inference.
 - [latest-cpu](https://hub.docker.com/repository/docker/infrawhispers/anansi/tags?page=1&ordering=last_updated&name=embeddings-latest-cpu) - a minimial image, lacking CUDA + libcuddn dylibs that allows for **only** CPU inference.
@@ -146,12 +146,13 @@ models:
 
 This configuration would create ONE `CLIP_VIT_L_14_336` and TWO `M_INSTRUCTOR_LARGE` models. This is useful for running multiple embedding models on a single GPU. The list of devices and available models can be found [here](https://github.com/infrawhispers/anansi/blob/main/embeddings/proto/api.proto). By default, embedds will instantiate one instance of [M_INSTRUCTOR_LARGE](https://huggingface.co/hkunlp/instructor-large).
 
-### Tips & Recommendations
+### Getting It Running
 
-We recommend having a volume mount for the cache folder in order to speed up startup and prevent repeated downloads. You can spin-up a local embedds service in this manner:
+We recommend having your `EMBEDDS_CONFIG_FILE` volume mounted in order to speed up startup and prevent repeated downloads. Spinning up a local server can be done via docker:
 
 ```bash
 docker run -p 0.0.0.0:50051:50051 -p 0.0.0.0:50052:50052 \
-		-v $(PWD)/.cache:/app/.cache -v $(PWD)/runtime:/app/runtime \
-		anansi:embeddings-latest
+		-v $(PWD)/.cache:/app/.cache \
+		anansi:embeddings-latest-cpu
 ```
+### API Documentation 
