@@ -21,7 +21,7 @@
   },
   "source_image": {
     "identity": {
-      "id": "sha256:af5f4bdf2c210f5d4b87dc028b5b5594f1c7cf4e023f5abb32e3637c05c77b3a",
+      "id": "sha256:f97658638c62d11461f655ad3e1d9bba964ca0612d6e315dc78db4e235357eb6",
       "tags": [
         "raw"
       ],
@@ -29,14 +29,14 @@
         "anansi-embeddings:raw"
       ]
     },
-    "size": 1785821088,
+    "size": 1786031430,
     "size_human": "1.8 GB",
-    "create_time": "2023-04-20T21:11:44Z",
+    "create_time": "2023-04-22T18:13:44Z",
     "docker_version": "20.10.12",
     "architecture": "amd64",
     "exposed_ports": [
-      "50051/tcp",
-      "50052/tcp"
+      "50052/tcp",
+      "50051/tcp"
     ],
     "os": "linux",
     "env_vars": [
@@ -46,12 +46,12 @@
       "exe_path": ""
     }
   },
-  "minified_image_size": 267698502,
+  "minified_image_size": 267908611,
   "minified_image_size_human": "268 MB",
   "minified_image": "anansi.embeddings:latest-cpu",
   "minified_image_has_data": true,
-  "minified_by": 6.671016366016124,
-  "artifact_location": "/tmp/slim-state/.slim-state/images/af5f4bdf2c210f5d4b87dc028b5b5594f1c7cf4e023f5abb32e3637c05c77b3a/artifacts",
+  "minified_by": 6.666569705741933,
+  "artifact_location": "/tmp/slim-state/.slim-state/images/f97658638c62d11461f655ad3e1d9bba964ca0612d6e315dc78db4e235357eb6/artifacts",
   "container_report_name": "creport.json",
   "seccomp_profile_name": "anansi-embeddings-seccomp.json",
   "apparmor_profile_name": "anansi-embeddings-apparmor-profile",
@@ -105,15 +105,15 @@
     },
     {
       "is_top_image": true,
-      "id": "sha256:af5f4bdf2c210f5d4b87dc028b5b5594f1c7cf4e023f5abb32e3637c05c77b3a",
+      "id": "sha256:f97658638c62d11461f655ad3e1d9bba964ca0612d6e315dc78db4e235357eb6",
       "full_name": "anansi-embeddings:raw",
       "repo_name": "anansi-embeddings",
       "version_tag": "raw",
       "raw_tags": [
         "anansi-embeddings:raw"
       ],
-      "create_time": "2023-04-20T21:11:44Z",
-      "new_size": 1716559557,
+      "create_time": "2023-04-22T18:13:44Z",
+      "new_size": 1716769899,
       "new_size_human": "1.7 GB",
       "base_image_id": "sha256:92a9b50a62b45ede9878156909ea76de9d04716aa0cdfe175bd2d28e34b87149",
       "instructions": [
@@ -173,44 +173,44 @@
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T21:11:40Z",
+          "time": "2023-04-22T18:13:40Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:db1796fac133f0f89e57df3e088dd255ad1f15ae8d15879db16a1da3cbbd8fe5",
+          "intermediate_image_id": "sha256:c877a140f1309d92dc0d236829e9965f42da34e2190c2c3481b98438e1837728",
           "layer_index": 0,
-          "size": 23621456,
+          "size": 23831600,
           "size_human": "24 MB",
-          "params": "file:df6b44dad99e296e57689c07155f05001c7c03c184ef642cf3ca25e69267fdad in embedding-server",
-          "command_snippet": "COPY file:df6b44dad99e296e57689c07155f05001c...",
-          "command_all": "COPY file:df6b44dad99e296e57689c07155f05001c7c03c184ef642cf3ca25e69267fdad embedding-server",
+          "params": "file:f5d158e5535a0564762b30c519b36710aca0568542674cd581a7f50064b108ff in embedding-server",
+          "command_snippet": "COPY file:f5d158e5535a0564762b30c519b36710ac...",
+          "command_all": "COPY file:f5d158e5535a0564762b30c519b36710aca0568542674cd581a7f50064b108ff embedding-server",
           "target": "embedding-server",
           "source_type": "file",
-          "inst_set_time_bucket": "2023-04-20T17:00:00-04:00",
-          "inst_set_time_index": 1
+          "inst_set_time_bucket": "2023-04-22T14:00:00-04:00",
+          "inst_set_time_index": 2
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T21:11:40Z",
+          "time": "2023-04-22T18:13:40Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:7b5cd21edf642ac7e94889a4e1f5377a3758d3c9c775a3d281e6a439374af1ae",
+          "intermediate_image_id": "sha256:c445741cc380b98a39ea6c387045c70b78fb797e3511861ae37f67b4b9e10c70",
           "layer_index": 0,
-          "size": 746,
-          "size_human": "746 B",
-          "params": "file:7c7da75c130f12fb246fde6e58b6e1479a78d0262a988b5da6cc0cba78824986 in init.sh",
-          "command_snippet": "COPY file:7c7da75c130f12fb246fde6e58b6e1479a...",
-          "command_all": "COPY file:7c7da75c130f12fb246fde6e58b6e1479a78d0262a988b5da6cc0cba78824986 init.sh",
+          "size": 854,
+          "size_human": "854 B",
+          "params": "file:32c9f489c6a451a1b252bec58f695ab7a48d4d098bc0c9d2bca410057273dbf1 in init.sh",
+          "command_snippet": "COPY file:32c9f489c6a451a1b252bec58f695ab7a4...",
+          "command_all": "COPY file:32c9f489c6a451a1b252bec58f695ab7a48d4d098bc0c9d2bca410057273dbf1 init.sh",
           "target": "init.sh",
           "source_type": "file",
-          "inst_set_time_bucket": "2023-04-20T17:00:00-04:00",
-          "inst_set_time_index": 1
+          "inst_set_time_bucket": "2023-04-22T14:00:00-04:00",
+          "inst_set_time_index": 2
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T21:11:43Z",
+          "time": "2023-04-22T18:13:43Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:7e58ed5764b07ccc7f028456b306619d6b0757c46e7ab8db5ea0f4c7cb75b765",
+          "intermediate_image_id": "sha256:4232e00e8bf0577f8d32ee48e81ff07ce56e826951a7dc15403de6a05a233b28",
           "layer_index": 0,
           "size": 439072136,
           "size_human": "439 MB",
@@ -219,15 +219,15 @@
           "command_all": "COPY multi:a543db8ddc8a4293ccfef470156237c9a4f69c279bd80611883cc2004e53b32e /usr/lib/",
           "target": "/usr/lib/",
           "source_type": "multi",
-          "inst_set_time_bucket": "2023-04-20T17:00:00-04:00",
-          "inst_set_time_index": 1
+          "inst_set_time_bucket": "2023-04-22T14:00:00-04:00",
+          "inst_set_time_index": 2
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T21:11:44Z",
+          "time": "2023-04-22T18:13:44Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:9272f2556ed671c82b3c9c5112cf2e8330a9d5bbf781f776d8d1fe89ae1b780d",
+          "intermediate_image_id": "sha256:4b6be1a2fc237790978856a144eabb539733bd9acf54f9130f9ed6630c4569f1",
           "layer_index": 0,
           "size": 98445544,
           "size_human": "98 MB",
@@ -236,57 +236,57 @@
           "command_all": "COPY file:815bba1640ce598a777a5021e3f1023f1a000d1b901d95a78379247f80440407 /usr/bin/envoy",
           "target": "/usr/bin/envoy",
           "source_type": "file",
-          "inst_set_time_bucket": "2023-04-20T17:00:00-04:00",
-          "inst_set_time_index": 1
+          "inst_set_time_bucket": "2023-04-22T14:00:00-04:00",
+          "inst_set_time_index": 2
         },
         {
           "type": "COPY",
-          "time": "2023-04-20T21:11:44Z",
+          "time": "2023-04-22T18:13:44Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:6bd358665f3d97da3d9c8a0a6bb500ad79753542622c2ec40624793ee01fe776",
+          "intermediate_image_id": "sha256:c950da22a5d35fb732f9e4bf2166b5ee7624ede037cf85efb7b58f18ebbd415d",
           "layer_index": 0,
-          "size": 79956,
+          "size": 80046,
           "size_human": "80 kB",
-          "params": "dir:9941349a2cc9c10deb0ee1c61b56c28112353ea0834832cdbf00b1d523cf4514 in runtime/",
-          "command_snippet": "COPY dir:9941349a2cc9c10deb0ee1c61b56c281123...",
-          "command_all": "COPY dir:9941349a2cc9c10deb0ee1c61b56c28112353ea0834832cdbf00b1d523cf4514 runtime/",
+          "params": "dir:f39cd138b8be508fd630d9e7f5e059a9a440be3506bcd6be811de3df5558516d in runtime/",
+          "command_snippet": "COPY dir:f39cd138b8be508fd630d9e7f5e059a9a44...",
+          "command_all": "COPY dir:f39cd138b8be508fd630d9e7f5e059a9a440be3506bcd6be811de3df5558516d runtime/",
           "target": "runtime/",
           "source_type": "dir",
-          "inst_set_time_bucket": "2023-04-20T17:00:00-04:00",
-          "inst_set_time_index": 1
+          "inst_set_time_bucket": "2023-04-22T14:00:00-04:00",
+          "inst_set_time_index": 2
         },
         {
           "type": "EXPOSE",
-          "time": "2023-04-20T21:11:44Z",
+          "time": "2023-04-22T18:13:44Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:8c1503f1f0fced1c2c3b2e95b40fbc13b1e1c8912ecc311aec76d9126d5f97fe",
+          "intermediate_image_id": "sha256:b31c2133055fb019683c78b3ec7bbe6b36b825a4b0b24d309160c236d018da6f",
           "layer_index": 0,
           "size": 0,
           "params": "50051",
           "command_snippet": "EXPOSE 50051",
           "command_all": "EXPOSE 50051",
-          "inst_set_time_bucket": "2023-04-20T17:00:00-04:00",
-          "inst_set_time_index": 1
+          "inst_set_time_bucket": "2023-04-22T14:00:00-04:00",
+          "inst_set_time_index": 2
         },
         {
           "type": "EXPOSE",
-          "time": "2023-04-20T21:11:44Z",
+          "time": "2023-04-22T18:13:44Z",
           "is_nop": true,
           "local_image_exists": true,
-          "intermediate_image_id": "sha256:bef077f04651ccbb15ffffe75f5805c8304cb02a18e2131fd7bf721c10e879f4",
+          "intermediate_image_id": "sha256:4a3f230ca5f9d6ed82c05a79851646399dc66ca26c4e18c7548188fd0172fdcf",
           "layer_index": 0,
           "size": 0,
           "params": "50052",
           "command_snippet": "EXPOSE 50052",
           "command_all": "EXPOSE 50052",
-          "inst_set_time_bucket": "2023-04-20T17:00:00-04:00",
-          "inst_set_time_index": 1
+          "inst_set_time_bucket": "2023-04-22T14:00:00-04:00",
+          "inst_set_time_index": 2
         },
         {
           "type": "ENTRYPOINT",
-          "time": "2023-04-20T21:11:44Z",
+          "time": "2023-04-22T18:13:44Z",
           "is_last_instruction": true,
           "is_nop": true,
           "is_exec_form": true,
@@ -299,8 +299,8 @@
           "raw_tags": [
             "anansi-embeddings:raw"
           ],
-          "inst_set_time_bucket": "2023-04-20T17:00:00-04:00",
-          "inst_set_time_index": 1
+          "inst_set_time_bucket": "2023-04-22T14:00:00-04:00",
+          "inst_set_time_index": 2
         }
       ]
     }

@@ -11,6 +11,7 @@ use ort::{
 };
 use phf::phf_map;
 use tokenizers::tokenizer::Tokenizer;
+use tracing::info;
 
 use crate::embedder::{Embedder, EmbedderParams, EmebeddingRequest, InstructorParams};
 use crate::utils::download_model_sync;
@@ -186,6 +187,7 @@ impl InstructorEmbedder {
         }
         let model_file_path = PathBuf::from(params.model_path).join(model_details.filename);
         if !model_file_path.exists() {
+            info!(model=params.model_name, "model_file_path: {:?} does not exist - initating download.",  model_file_path);
             download_model_sync(
                 params.model_name,
                 &format!("{}/instructor/{}", S3_BUCKET_URI, model_details.filename),
