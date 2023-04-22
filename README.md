@@ -45,7 +45,8 @@ official docker images are available here.
 # brew install grpcurl
 grpcurl -d '{
     "data":[{
-        "model":"M_INSTRUCTOR_LARGE",
+        "model_name":"INSTRUCTOR_LARGE",
+        "model_class":"ModelClass_INSTRUCTOR",
         "text":[
             "3D ActionSLAM: wearable person tracking ...",
             "Inside Gohar World and the Fine, Fantastical Art"

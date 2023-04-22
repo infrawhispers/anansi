@@ -102,7 +102,7 @@ message EncodeItem {
   repeated string image_uri = 6 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated uris to fetch image data from"}];
 }
 message EncodeRequest {
-  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {example: '{"data":[{"model":"M_INSTRUCTOR_LARGE","text":["3D ActionSLAM: wearable person tracking ...","Inside Gohar World and the Fine, Fantastical Art"],"instructions":["Represent the Science title:","Represent the Magazine title:"]}]}'};
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {example: '{"data":[{"model_class":"ModelClass_INSTRUCTOR","model_name":"INSTRUCTOR_LARGE", "text":["3D ActionSLAM: wearable person tracking ...","Inside Gohar World and the Fine, Fantastical Art"],"instructions":["Represent the Science title:","Represent the Magazine title:"]}]}'};
   repeated EncodeItem data = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated data items to generate encodings for"}];
 }
 
@@ -135,8 +135,8 @@ service Api {
         "<br/>----<br/>"
         "<b>Not all models support [text, instructions, image, image_uri]</b> a breakdown of present support is outlined below:"
         "<ul>"
-        "<li>model->INSTRUCTOR - requires: {text, instructions}</li>"
-        "<li>model->CLIP - any_of: {text, image_uri, image}</li>"
+        "<li>ModelClass_INSTRUCTOR - requires: {text, instructions}</li>"
+        "<li>ModelClass_CLIP - any_of: {text, image_uri, image}</li>"
         "</ul>"
         "";
       consumes: "application/json";

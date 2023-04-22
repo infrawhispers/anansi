@@ -31,7 +31,7 @@
     "/encode": {
       "post": {
         "summary": "encode",
-        "description": "Generates a vector representation of text or images using the specified embedding model. If the model does not exist or has not been loaded, an error will be returned for that particular data item. \u003cbr/\u003e\u003cbr/\u003eIt is recommended that multiple pieces of content are specified in a single request to take advantage of batching, especially when running under with a GPU accelerated \u003ca href='https://onnxruntime.ai/docs/execution-providers/' target='_blank'\u003eExecutionProvider.\u003c/a\u003e Recommended sizes can be found at \u003ca href='/embedds/model-details' target='_blank'\u003eembedds/model-details\u003c/a\u003e and embedds will attempt to split and batch encoding requests.\u003cbr/\u003e----\u003cbr/\u003e\u003cb\u003eNot all models support [text, instructions, image, image_uri]\u003c/b\u003e a breakdown of present support is outlined below:\u003cul\u003e\u003cli\u003emodel-\u003eINSTRUCTOR - requires: {text, instructions}\u003c/li\u003e\u003cli\u003emodel-\u003eCLIP - any_of: {text, image_uri, image}\u003c/li\u003e\u003c/ul\u003e",
+        "description": "Generates a vector representation of text or images using the specified embedding model. If the model does not exist or has not been loaded, an error will be returned for that particular data item. \u003cbr/\u003e\u003cbr/\u003eIt is recommended that multiple pieces of content are specified in a single request to take advantage of batching, especially when running under with a GPU accelerated \u003ca href='https://onnxruntime.ai/docs/execution-providers/' target='_blank'\u003eExecutionProvider.\u003c/a\u003e Recommended sizes can be found at \u003ca href='/embedds/model-details' target='_blank'\u003eembedds/model-details\u003c/a\u003e and embedds will attempt to split and batch encoding requests.\u003cbr/\u003e----\u003cbr/\u003e\u003cb\u003eNot all models support [text, instructions, image, image_uri]\u003c/b\u003e a breakdown of present support is outlined below:\u003cul\u003e\u003cli\u003eModelClass_INSTRUCTOR - requires: {text, instructions}\u003c/li\u003e\u003cli\u003eModelClass_CLIP - any_of: {text, image_uri, image}\u003c/li\u003e\u003c/ul\u003e",
         "operationId": "Api_Encode",
         "responses": {
           "200": {
@@ -113,9 +113,13 @@
     "apiEncodeItem": {
       "type": "object",
       "properties": {
-        "model": {
-          "$ref": "#/definitions/apiEncodingModel",
-          "description": "selected model to run the encoding process through"
+        "model_class": {
+          "$ref": "#/definitions/apiModelClass",
+          "description": "corresponding class in which the model_name belongs to"
+        },
+        "model_name": {
+          "type": "string",
+          "description": "specific name of the model to apply the encoding transformation"
         },
         "text": {
           "type": "array",
@@ -157,7 +161,8 @@
       "example": {
         "data": [
           {
-            "model": "M_INSTRUCTOR_LARGE",
+            "model_class": "ModelClass_INSTRUCTOR",
+            "model_name": "INSTRUCTOR_LARGE",
             "text": [
               "3D ActionSLAM: wearable person tracking ...",
               "Inside Gohar World and the Fine, Fantastical Art"
@@ -210,26 +215,6 @@
         }
       }
     },
-    "apiEncodingModel": {
-      "type": "string",
-      "enum": [
-        "M_UNKNOWN",
-        "M_INSTRUCTOR_LARGE",
-        "M_INSTRUCTOR_XL",
-        "M_INSTRUCTOR_BASE",
-        "M_CLIP_RN50_OPENAI",
-        "M_CLIP_RN50_YFCC15M",
-        "M_CLIP_RN50_CC12M",
-        "M_CLIP_RN101_OPENAI",
-        "M_CLIP_RN101_YFCC15M",
-        "M_CLIP_RN50x4_OPENAI",
-        "M_CLIP_RN50x16_OPENAI",
-        "M_CLIP_RN50x64_OPENAI",
-        "M_CLIP_VIT_L_14_336_OPENAI"
-      ],
-      "default": "M_UNKNOWN",
-      "title": "- M_INSTRUCTOR_LARGE: instructor models\n - M_CLIP_RN50_OPENAI: clip models"
-    },
     "apiInitializeModelRequest": {
       "type": "object",
       "properties": {
@@ -262,12 +247,25 @@
         }
       }
     },
+    "apiModelClass": {
+      "type": "string",
+      "enum": [
+        "ModelClass_Unknown",
+        "ModelClass_CLIP",
+        "ModelClass_INSTRUCTOR"
+      ],
+      "default": "ModelClass_Unknown"
+    },
     "apiModelInitResult": {
       "type": "object",
       "properties": {
+        "model_class": {
+          "$ref": "#/definitions/apiModelClass",
+          "description": "corresponding class in which the model_name belongs to"
+        },
         "model_name": {
-          "$ref": "#/definitions/apiEncodingModel",
-          "description": "identifier of model used for creation"
+          "type": "string",
+          "description": "specific name of the model to apply the encoding transformation"
         },
         "initialized": {
           "type": "boolean",
@@ -284,9 +282,13 @@
     "apiModelSettings": {
       "type": "object",
       "properties": {
+        "model_class": {
+          "$ref": "#/definitions/apiModelClass",
+          "description": "corresponding class in which the model_name belongs to"
+        },
         "model_name": {
-          "$ref": "#/definitions/apiEncodingModel",
-          "description": "The specific embedding model to create"
+          "type": "string",
+          "description": "specific name of the model to apply the encoding transformation"
         },
         "num_threads": {
           "type": "integer",
