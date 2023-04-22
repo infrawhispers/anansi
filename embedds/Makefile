@@ -2,6 +2,9 @@ gen-pb:
 	protoc -I$(GOOGLEAPIS_DIR) -I ./proto \
 		--descriptor_set_out=runtime/api.pb --include_source_info \
 		--include_imports ./proto/api.proto 
+gen-docs:
+	cd proto && buf generate && \
+	swagger2openapi --yaml --outfile swagger/api.swagger.yaml swagger/api.swagger.json
 
 build-n-run:
 	docker build . -t anansi-embeddings && \

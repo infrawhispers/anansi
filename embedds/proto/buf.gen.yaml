@@ -6,3 +6,5 @@ managed:
 plugins:
   - name: openapiv2
     out: swagger
+    opt:
+      - json_names_for_fields=false

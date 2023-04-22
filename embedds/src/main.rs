@@ -16,8 +16,8 @@ use tracing::{info, warn, Level};
 
 use embeddings::api::api_server::{Api, ApiServer};
 use embeddings::api::{
-    EncodeItem, EncodeRequest, EncodeResponse, EncodeResult, EncodingModel, EncodingModelDevice,
-    InitializeModelRequest, InitializeModelResponse, ModelInitResult, ModelSettings,
+    EncodeItem, EncodeRequest, EncodeResponse, EncodeResult, EncodingModelDevice,
+    InitializeModelRequest, InitializeModelResponse, ModelClass, ModelInitResult, ModelSettings,
 };
 use embeddings::app_config;
 use embeddings::embedder;
@@ -60,11 +60,12 @@ impl ApiServerImpl {
 
 impl ApiServerImpl {
     async fn init_model(&self, m: &ModelSettings) -> anyhow::Result<()> {
-        let model_name;
-        match EncodingModel::from_i32(m.model_name) {
-            Some(val) => model_name = val,
+        let model_class;
+        let model_name = m.model_name.clone();
+        match ModelClass::from_i32(m.model_class) {
+            Some(val) => model_class = val.as_str_name(),
             None => {
-                bail!("unknown model: {}", m.model_name)
+                bail!("unknown model_class: {}", m.model_class)
             }
         }
         let num_threads: u32;
@@ -88,7 +89,7 @@ impl ApiServerImpl {
 
         let mgr = self.mgr.clone();
         let t = task::spawn_blocking(move || {
-            mgr.initialize_model(model_name.as_str_name(), num_threads, parallel_execution)
+            mgr.initialize_model(model_class, &model_name, num_threads, parallel_execution)
         });
         // let res;
         match t.await {
@@ -132,56 +133,47 @@ impl ApiServerImpl {
     fn transform_encode_req<'a>(
         &'a self,
         data: &'a Vec<EncodeItem>,
-    ) -> Result<Vec<(&str, embedder::EmebeddingRequest)>, Status> {
-        let mut req: Vec<(&str, embedder::EmebeddingRequest)> = Vec::new();
+    ) -> Result<Vec<(&str, &str, embedder::EmebeddingRequest)>, Status> {
+        let mut req: Vec<(&str, &str, embedder::EmebeddingRequest)> = Vec::new();
         for i in 0..data.len() {
             let item = &data[i];
-            let x;
-            match EncodingModel::from_i32(item.model) {
-                Some(val) => x = val,
+            let model_class;
+            match ModelClass::from_i32(item.model_class) {
+                Some(val) => model_class = val,
                 None => {
                     return Err(Status::new(
                         Code::InvalidArgument,
-                        format!("unknown model: {} set at item: {}", item.model, i),
+                        format!(
+                            "unknown model class: {} set at idx: {}",
+                            item.model_class, i
+                        ),
                     ));
                 }
             }
-            match x {
-                EncodingModel::MInstructorLarge
-                | EncodingModel::MInstructorXl
-                | EncodingModel::MInstructorBase => {
+            match model_class {
+                ModelClass::Instructor => {
                     if data[i].text.len() != data[i].instructions.len() {
                         return Err(Status::new(
                             Code::InvalidArgument,
-                            format!(
-                                "INSTRUCTOR: len text: {} != len instructions {}",
-                                data[i].text.len(),
-                                data[i].instructions.len()
-                            ),
+                            format!("INSTUCTOR class models require pairs of (text, instructions) | text.len: {}, instructions.len: {}", data[i].text.len(),data[i].instructions.len() )
                         ));
                     }
                     req.push((
-                        x.as_str_name(),
+                        model_class.as_str_name(),
+                        &item.model_name,
                         embedder::EmebeddingRequest::InstructorRequest {
                             params: InstructorParams {
                                 text: &data[i].text,
                                 instructions: &data[i].instructions,
                             },
                         },
-                    ));
+                    ))
                 }
-                EncodingModel::MClipRn50Openai
-                | EncodingModel::MClipRn50Yfcc15m
-                | EncodingModel::MClipRn50Cc12m
-                | EncodingModel::MClipRn101Openai
-                | EncodingModel::MClipRn101Yfcc15m
-                | EncodingModel::MClipRn50x4Openai
-                | EncodingModel::MClipRn50x16Openai
-                | EncodingModel::MClipVitL14336Openai
-                | EncodingModel::MClipRn50x64Openai => {
+                ModelClass::Clip => {
                     if data[i].text.len() != 0 {
                         req.push((
-                            x.as_str_name(),
+                            model_class.as_str_name(),
+                            &item.model_name,
                             embedder::EmebeddingRequest::CLIPRequest {
                                 params: CLIPParams::Text {
                                     vals: &data[i].text,
@@ -191,7 +183,8 @@ impl ApiServerImpl {
                     }
                     if data[i].image_uri.len() != 0 {
                         req.push((
-                            x.as_str_name(),
+                            model_class.as_str_name(),
+                            &item.model_name,
                             embedder::EmebeddingRequest::CLIPRequest {
                                 params: CLIPParams::Uri {
                                     vals: &data[i].image_uri,
@@ -201,7 +194,8 @@ impl ApiServerImpl {
                     }
                     if data[i].image.len() != 0 {
                         req.push((
-                            x.as_str_name(),
+                            model_class.as_str_name(),
+                            &item.model_name,
                             embedder::EmebeddingRequest::CLIPRequest {
                                 params: CLIPParams::UriBytes {
                                     vals: &data[i].image,
@@ -210,10 +204,13 @@ impl ApiServerImpl {
                         ))
                     }
                 }
-                EncodingModel::MUnknown => {
+                ModelClass::Unknown => {
                     return Err(Status::new(
                         Code::InvalidArgument,
-                        format!("unknown model: {} set at item: {}", item.model, i),
+                        format!(
+                            "unknown model_class: {} set at idx: {}",
+                            item.model_class, i
+                        ),
                     ))
                 }
             }
@@ -241,12 +238,14 @@ impl Api for ApiServerImpl {
                 Ok(()) => results.push(ModelInitResult {
                     err_message: "".to_string(),
                     initialized: true,
-                    model_name: m.model_name,
+                    model_name: m.model_name.clone(),
+                    model_class: m.model_class,
                 }),
                 Err(err) => results.push(ModelInitResult {
                     err_message: format!("unable to init: {}", err),
                     initialized: false,
-                    model_name: m.model_name,
+                    model_name: m.model_name.clone(),
+                    model_class: m.model_class,
                 }),
             }
         }
@@ -259,25 +258,27 @@ impl Api for ApiServerImpl {
         request: Request<EncodeRequest>,
     ) -> Result<Response<EncodeResponse>, Status> {
         let data: Vec<EncodeItem> = request.into_inner().data;
-        let req_pairs: Vec<(&str, embedder::EmebeddingRequest)> =
+        let req_pairs: Vec<(&str, &str, embedder::EmebeddingRequest)> =
             self.transform_encode_req(&data)?;
         let mut encoding_results: Vec<EncodeResult> = Vec::with_capacity(req_pairs.len());
-        req_pairs.iter().for_each(|(model_name, embedding_req)| {
-            match self.mgr.encode(model_name, embedding_req) {
-                Ok(results) => {
-                    results.iter().for_each(|result| {
-                        encoding_results.push(EncodeResult {
-                            err_message: "".to_string(),
-                            embedding: result.clone(),
+        req_pairs
+            .iter()
+            .for_each(|(model_class, model_name, embedding_req)| {
+                match self.mgr.encode(model_class, model_name, embedding_req) {
+                    Ok(results) => {
+                        results.iter().for_each(|result| {
+                            encoding_results.push(EncodeResult {
+                                err_message: "".to_string(),
+                                embedding: result.clone(),
+                            });
                         });
-                    });
+                    }
+                    Err(err) => encoding_results.push(EncodeResult {
+                        err_message: format!("err while encoding message: {}", err),
+                        embedding: Vec::new(),
+                    }),
                 }
-                Err(err) => encoding_results.push(EncodeResult {
-                    err_message: format!("err while encoding message: {}", err),
-                    embedding: Vec::new(),
-                }),
-            }
-        });
+            });
         let reply = EncodeResponse {
             results: encoding_results,
         };
@@ -345,22 +346,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // STEP 4 - initialize the models that should be preloaded on startup.
     for idx in 0..model_configs.len() {
         let cfg = &model_configs[idx];
-        let model_name_str = EncodingModel::from_i32(cfg.model_name)
-            .ok_or(anyhow!("model \"{}\" is not a valid enum", cfg.model_name))?
+        let model_class = ModelClass::from_i32(cfg.model_class)
+            .ok_or(anyhow!("model \"{}\" is not a valid enum", cfg.model_class))?
             .as_str_name();
-        info!(model = model_name_str, "initializing model before startup");
+        info!(
+            model = cfg.model_name.clone(),
+            class = model_class,
+            "initializing model before startup"
+        );
         match apiserver.init_model(&cfg).await {
             Ok(()) => {
                 info!(
-                    model = model_name_str,
+                    model = cfg.model_name,
+                    class = model_class,
                     "successfully initialized model at startup",
                 );
             }
             Err(err) => {
-                info!(model = model_name_str, "unable to create the model");
+                info!(
+                    model = cfg.model_name,
+                    class = model_class,
+                    "unable to create the model"
+                );
                 panic!(
                     "could not intialize model: {} | err: {}",
-                    model_name_str, err
+                    cfg.model_name, err
                 );
             }
         }

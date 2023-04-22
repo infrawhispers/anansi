@@ -7,7 +7,7 @@ import "protoc-gen-openapiv2/options/annotations.proto";
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
   info: {
     title: "embedds";
-    version: "1.0";
+    version: "1.0.0";
     contact: {
       name: "anansi";
       url: "https://github.com/infrawhispers/anansi";
@@ -37,14 +37,15 @@ message ModelSettings {
       required: ["model_name"]
     }
   };
-  EncodingModel model_name = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "The specific embedding model to create"}];
-  uint32 num_threads = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+  ModelClass model_class = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "corresponding class in which the model_name belongs to"}];
+  string model_name = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "specific name of the model to apply the encoding transformation"}];
+  uint32 num_threads = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
       "The number of threads to parallelize the execution of "
       "the graph - if the graph can be parallelized. <br/> If "
       "unset, defaults to the available parallelism on the "
       "underlying machine."
 }];
-  bool parallel_execution = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+  bool parallel_execution = 4 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
       "Enable/disable the parallel execution of the graph. "
       "Parallel execution can improve model execution speed at "
       "the cost of increased memory usage."
@@ -70,27 +71,15 @@ message ModelInitResult {
       read_only: true
     }
   };
-  EncodingModel model_name = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "identifier of model used for creation"}];
-  bool initialized = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "whether or not the model was successfully initalized"}];
-  string err_message = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "error details outlining why the model could not be initialized"}];
+  ModelClass model_class = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "corresponding class in which the model_name belongs to"}];
+  string model_name = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "specific name of the model to apply the encoding transformation"}];
+  bool initialized = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "whether or not the model was successfully initalized"}];
+  string err_message = 4 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "error details outlining why the model could not be initialized"}];
 }
-
-enum EncodingModel {
-  M_UNKNOWN = 0;
-  // instructor models
-  M_INSTRUCTOR_LARGE = 1;
-  M_INSTRUCTOR_XL = 2;
-  M_INSTRUCTOR_BASE = 3;
-  // clip models
-  M_CLIP_RN50_OPENAI = 10;
-  M_CLIP_RN50_YFCC15M = 11;
-  M_CLIP_RN50_CC12M = 12;
-  M_CLIP_RN101_OPENAI = 13;
-  M_CLIP_RN101_YFCC15M = 14;
-  M_CLIP_RN50x4_OPENAI = 15;
-  M_CLIP_RN50x16_OPENAI = 16;
-  M_CLIP_RN50x64_OPENAI = 17;
-  M_CLIP_VIT_L_14_336_OPENAI = 18;
+enum ModelClass {
+  ModelClass_Unknown = 0;
+  ModelClass_CLIP = 1;
+  ModelClass_INSTRUCTOR = 2;
 }
 
 message EncodeItem {
@@ -102,14 +91,15 @@ message EncodeItem {
       required: ["model"]
     }
   };
-  EncodingModel model = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "selected model to run the encoding process through"}];
-  repeated string text = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated text to encode"}];
-  repeated string instructions = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+  ModelClass model_class = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "corresponding class in which the model_name belongs to"}];
+  string model_name = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "specific name of the model to apply the encoding transformation"}];
+  repeated string text = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated text to encode"}];
+  repeated string instructions = 4 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
       "a list of instructions to pass to ```INSTRUCTOR``` "
       "based models"
 }];
-  repeated bytes image = 4 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated raw jpeg bytes"}];
-  repeated string image_uri = 5 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated uris to fetch image data from"}];
+  repeated bytes image = 5 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated raw jpeg bytes"}];
+  repeated string image_uri = 6 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated uris to fetch image data from"}];
 }
 message EncodeRequest {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {example: '{"data":[{"model":"M_INSTRUCTOR_LARGE","text":["3D ActionSLAM: wearable person tracking ...","Inside Gohar World and the Fine, Fantastical Art"],"instructions":["Represent the Science title:","Represent the Magazine title:"]}]}'};
@@ -134,11 +124,21 @@ service Api {
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "generate embedding representations of text or images";
+      summary: "encode";
       description:
-        "Generates a vector representation of text or images using the associated "
-        "embeding model If the model does not exist or has not been loaded, "
-        "content requests will be ignored."
+        "Generates a vector representation of text or images using the specified embedding model. "
+        "If the model does not exist or has not been loaded, an error will be returned for that particular data item. "
+        "<br/><br/>It is recommended that multiple pieces of content are specified in a single request to take advantage of batching, "
+        "especially when running under with a GPU accelerated <a href='https://onnxruntime.ai/docs/execution-providers/' target='_blank'>ExecutionProvider.</a> "
+        "Recommended sizes can be found at <a href='/embedds/model-details' target='_blank'>embedds/model-details</a> and embedds will "
+        "attempt to split and batch encoding requests."
+        "<br/>----<br/>"
+        "<b>Not all models support [text, instructions, image, image_uri]</b> a breakdown of present support is outlined below:"
+        "<ul>"
+        "<li>model->INSTRUCTOR - requires: {text, instructions}</li>"
+        "<li>model->CLIP - any_of: {text, image_uri, image}</li>"
+        "</ul>"
+        "";
       consumes: "application/json";
       produces: "application/json";
     };
@@ -146,15 +146,19 @@ service Api {
 
   rpc InitializeModel(InitializeModelRequest) returns (InitializeModelResponse) {
     option (google.api.http) = {
-      post: "/initalize"
+      post: "/initalize_models"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "load and intialize an embedding model";
+      summary: "initialize_models";
       description:
-        "Embedding models are loaded from the folder pointed to by "
-        "```EMEBEDDS_CACHE_FOLDER```.<b>If the model is missing</b> the server will "
-        "attempt to download the corresponding file from a remote source.";
+        "Intializes an onnx model, adding it to the pool of models available for embedding generation. "
+        "ONNX models are loaded from the folder designated by ```EMBBEDDS_CACHE_FOLDER``` and it is recommended "
+        "that this folder be volume mounted if running within a container."
+        "<br/><br/>If the model is missing, the server will attempt to download the corresponding file from a remote source."
+        "<br/><br/>embedds must be created with ```EMBEDDS_ALLOW_ADMIN=true``` as the unrestricted creation of models can lead "
+        "to resource starvation. If you are exposing the process to non-trusted clients, we recommended that ```EMBEDDS_ALLOW_ADMIN```"
+        " be set to false.";
       consumes: "application/json";
       produces: "application/json";
     };

@@ -1,4 +1,4 @@
-use crate::api::{EncodingModel, ModelSettings};
+use crate::api::{ModelClass, ModelSettings};
 use crate::embedder_manager::ModelConfiguration;
 use anyhow::{anyhow, bail};
 use std::fs::File;
@@ -14,11 +14,11 @@ pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSe
             config_path
         );
         return Ok(vec![ModelSettings {
-            model_name: EncodingModel::from_str_name("M_CLIP_VIT_L_14_336_OPENAI")
-                .ok_or(anyhow!(
-                    "model \"M_CLIP_VIT_L_14_336_OPENAI\" is not a valid enum"
-                ))?
+            model_name: "VIT_L_14_336_OPENAI".to_string(),
+            model_class: ModelClass::from_str_name("ModelClass_CLIP")
+                .ok_or(anyhow!("model \"ModelClass_CLIP\" is not a valid enum"))?
                 .into(),
+
             num_threads: 4,
             parallel_execution: true,
         }]);
@@ -40,23 +40,36 @@ pub fn fetch_initial_models(config_path: &PathBuf) -> anyhow::Result<Vec<ModelSe
         }
         for idx_model in 0..models.len() {
             let mut config = ModelSettings {
-                model_name: EncodingModel::from_str_name("M_CLIP_VIT_L_14_336_OPENAI")
-                    .ok_or(anyhow!(
-                        "model \"M_CLIP_VIT_L_14_336_OPENAI\" is not a valid enum"
-                    ))?
+                model_name: "VIT_L_14_336_OPENAI".to_string(),
+                model_class: ModelClass::from_str_name("ModelClass_CLIP")
+                    .ok_or(anyhow!("model \"ModelClass_CLIP\" is not a valid enum"))?
                     .into(),
                 num_threads: 4,
                 parallel_execution: true,
             };
             match doc["models"][idx_model]["name"].as_str() {
                 Some(model_name) => {
-                    config.model_name = EncodingModel::from_str_name(model_name)
-                        .ok_or(anyhow!("model {} is not a valid enum", model_name))?
-                        .into();
+                    config.model_name = model_name.to_string();
                 }
                 None => {
                     bail!(
                         "[config] model at idx: {} is missing \"model_name\"",
+                        idx_model
+                    )
+                }
+            }
+            match doc["models"][idx_model]["class"].as_str() {
+                Some(model_class) => {
+                    config.model_class = ModelClass::from_str_name(model_class)
+                        .ok_or(anyhow!(format!(
+                            "model_class \"{}\" is not a valid enum",
+                            model_class
+                        )))?
+                        .into();
+                }
+                None => {
+                    bail!(
+                        "[config] model at idx: {} is missing \"model_class\"",
                         idx_model
                     )
                 }

@@ -15,15 +15,15 @@ use crate::embedder::EmebeddingRequest;
 use crate::image_processor::ImageProcessor;
 use crate::instructor;
 
-// struct ModelQueue {
-//     model_name: String,
-//     send: Sender<Box<dyn embedder::Embedder>>,
-//     recv: Receiver<Box<dyn embedder::Embedder>>,
-// }
+#[derive(Eq, PartialEq, Hash, Clone)]
+struct ModelKey {
+    model_class: String,
+    model_name: String,
+}
 
 pub struct EmbedderManager {
     // TODO(infrawhispers) - could we get away with using a Vec<Box>?
-    models: Arc<RwLock<HashMap<String, Vec<Arc<dyn embedder::Embedder>>>>>,
+    models: Arc<RwLock<HashMap<ModelKey, Vec<Arc<dyn embedder::Embedder>>>>>,
     ort_environment: Arc<Environment>,
     img_processor: Arc<ImageProcessor>,
     model_path: PathBuf,
@@ -65,27 +65,21 @@ impl EmbedderManager {
 
     pub fn initialize_model(
         &self,
+        model_class: &str,
         model_name: &str,
         num_threads: u32,
         parallel_execution: bool,
     ) -> anyhow::Result<()> {
-        let model_identifier;
-        match model_name.split_once('_') {
-            Some((_p, s)) => model_identifier = s,
-            None => {
-                bail!("unable to determine model_identifier from: {}", model_name)
-            }
-        }
         let m: Arc<dyn embedder::Embedder>;
-        match model_identifier {
-            "INSTRUCTOR_LARGE" | "INSTRUCTOR_BASE" | "INSTRUCTOR_XL" => {
+        match model_class {
+            "ModelClass_INSTRUCTOR" => {
                 let mut path = self.model_path.clone();
                 path.push("instructor");
                 // "../model-transform/instructor_w_ctx_mask.onnx",
                 let embedder: instructor::InstructorEmbedder =
                     embedder::Embedder::new(&embedder::EmbedderParams {
                         model_path: path.as_path(),
-                        model_name: model_identifier,
+                        model_name: model_name,
                         num_threads: num_threads as i16,
                         parallel_execution: parallel_execution,
                         ort_environment: self.ort_environment.clone(),
@@ -93,15 +87,15 @@ impl EmbedderManager {
                     })?;
                 m = Arc::new(embedder);
             }
-            "CLIP_VIT_L_14_336_OPENAI" => {
+            "ModelClass_CLIP" => {
                 let mut path = self.model_path.clone();
                 path.push("clip");
-                path.push(model_identifier);
+                path.push(model_name);
                 info!("creating model: ");
                 let embedder: clip::CLIPEmbedder =
                     clip::CLIPEmbedder::new(&embedder::EmbedderParams {
                         model_path: path.as_path(),
-                        model_name: model_identifier,
+                        model_name: model_name,
                         num_threads: num_threads as i16,
                         parallel_execution: parallel_execution,
                         ort_environment: self.ort_environment.clone(),
@@ -110,21 +104,25 @@ impl EmbedderManager {
                 m = Arc::new(embedder);
             }
             &_ => {
-                bail!("unknown model identifier: {}", model_identifier)
+                bail!(
+                    "embedder_manager is unaware of model_class: {}",
+                    model_class
+                )
             }
         }
+        let mkey = ModelKey {
+            model_class: model_class.to_string(),
+            model_name: model_name.to_string(),
+        };
         let mut m_map = self.models.write();
-        match m_map.get_mut(model_identifier) {
+        match m_map.get_mut(&mkey) {
             Some(mv) => {
-                info!(
-                    model = model_identifier,
-                    "adding embedder to existing queue"
-                );
+                info!(model = mkey.model_name, class=mkey.model_class, "adding model to existing array");
                 mv.push(m);
             }
             None => {
-                info!(model = model_identifier, "creating new model queue");
-                m_map.insert(model_identifier.to_string(), vec![m]);
+                info!(model = mkey.model_name, class=mkey.model_class, "creating new model array");
+                m_map.insert(mkey, vec![m]);
             } // Some(mq) => {
               //     info!(
               //         model = model_identifier,
@@ -149,8 +147,6 @@ impl EmbedderManager {
 
     fn encode_impl(
         &self,
-        // queue: &ModelQueue,
-        // queue:
         embedders: &Vec<Arc<dyn embedder::Embedder>>,
         req: &EmebeddingRequest,
     ) -> anyhow::Result<Vec<Vec<f32>>> {
@@ -170,24 +166,22 @@ impl EmbedderManager {
     }
     pub fn encode(
         &self,
+        model_class: &str,
         model_name: &str,
         req: &EmebeddingRequest,
     ) -> anyhow::Result<Vec<Vec<f32>>> {
-        let model_identifier;
-        match model_name.split_once('_') {
-            Some((_p, s)) => model_identifier = s,
-            None => {
-                bail!("unable to determine model_identifier from: {}", model_name)
-            }
-        }
-
+        let mkey = ModelKey {
+            model_class: model_class.to_string(),
+            model_name: model_name.to_string(),
+        };
         let m_map = self.models.read();
         let embedder: &Vec<Arc<dyn embedder::Embedder>>;
-        match m_map.get(model_identifier) {
+        match m_map.get(&mkey) {
             None => {
                 bail!(
-                    "no model {} initialized in the embedd manager",
-                    model_identifier
+                    "no model: {} with class: {} initialized in the embedd manager",
+                    model_name,
+                    model_class,
                 )
             }
             Some(res) => embedder = res,
@@ -214,7 +208,7 @@ mod tests {
             .expect("unable to create the tracing subscriber");
         return;
         let model_path = PathBuf::from(".cache");
-        let model_name = "M_CLIP_VIT_L_14_336_OPENAI";
+        let model_name = "VIT_L_14_336_OPENAI";
         let mgr =
             Arc::new(EmbedderManager::new(&model_path).expect("unable to create the manager"));
 
