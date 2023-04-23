@@ -65,9 +65,9 @@ grpcurl -d '{
 
 
 ## What can anansi be used for?
-anansi has a vector storage library developed in Rust, which allows the code to be compiled into WebAssembly (WASM) for use on different platforms, including web browsers and smartphones. The library includes a conversion technique that decreases the model size while also improving CPU and hardware accelerator latency through a process called quantization.
+anansi has a vector storage and content encoding library developed in Rust, which allows the code to be compiled into WebAssembly (WASM) for use on different platforms, including web browsers and smartphones. The library includes a conversion technique that decreases the model size while also improving CPU and hardware accelerator latency through a process called quantization.
 
-By employing quantization, the vector size of each embedding is reduced from X to Y bytes. Additionally, anansi uses the ONNX runtime to compress the embedding model, which helps reduce the model size. These are some of the use cases of anansi
+By employing quantization, the vector size of each embedding is reduced from X to Y bytes. Additionally, anansi uses the ONNX runtime to compress embedding models, leading to at least a 2X reduction in the model size. These are some of the use cases of anansi
 - **Resource-constrained environments**: anansi can be particularly useful for applications running on devices with limited computational power and memory, such as smartphones or IoT devices. The reduced model size and improved latency from quantization enable better performance on these devices compared to other similarity search engines.
 - **Cross-platform deployment**: Since anansi can be compiled to WebAssembly (WASM), it can be easily deployed in web browsers, offering a broader range of platform compatibility than Faiss and Milvus, which mainly target server and desktop environments.
 - **Energy efficiency**: Applications that require energy-efficient solutions, such as those running on battery-powered devices or in data centers with strict power limitations, could benefit from anansi's smaller models and reduced computational requirements. This could lead to longer battery life and lower energy consumption compared to using others.
