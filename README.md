@@ -45,8 +45,7 @@ official docker images are available here.
 # brew install grpcurl
 grpcurl -d '{
     "data":[{
-        "model_name":"INSTRUCTOR_LARGE",
-        "model_class":"ModelClass_INSTRUCTOR",
+        "model":"M_INSTRUCTOR_LARGE",
         "text":[
             "3D ActionSLAM: wearable person tracking ...",
             "Inside Gohar World and the Fine, Fantastical Art"
@@ -63,6 +62,22 @@ grpcurl -d '{
 </tr>
 </tbody>
 </table>
+
+
+### What can this help with?
+anansi has a vector storage library developed in Rust, which allows the code to be compiled into WebAssembly (WASM) for use on different platforms, including web browsers and smartphones. The library includes a conversion technique that decreases the model size while also improving CPU and hardware accelerator latency through a process called quantization.
+
+By employing quantization, the vector size of each embedding is reduced from X to Y bytes. Additionally, anansi uses the ONNX runtime to compress the embedding model, which helps reduce the model size. These are some of the use cases of anansi
+- ** Resource-constrained environments: anansi can be particularly useful for applications running on devices with limited computational power and memory, such as smartphones or IoT devices. The reduced model size and improved latency from quantization enable better performance on these devices compared to other similarity search engines.
+- ** Cross-platform deployment: Since anansi can be compiled to WebAssembly (WASM), it can be easily deployed in web browsers, offering a broader range of platform compatibility than Faiss and Milvus, which mainly target server and desktop environments.
+- Energy efficiency: Applications that require energy-efficient solutions, such as those running on battery-powered devices or in data centers with strict power limitations, could benefit from anansi's smaller models and reduced computational requirements. This could lead to longer battery life and lower energy consumption compared to using others.
+- ** Edge computing: In edge computing scenarios where data processing is performed near the source of data generation, anansi's ability to run on various platforms and lower resource requirements make it a more suitable choice than Faiss and Milvus, which may have difficulty operating effectively on some edge devices.
+- ** Low-bandwidth environments: In situations where there are constraints on network bandwidth, such as remote or rural areas with limited connectivity, anansi's reduced model sizes can be beneficial. Smaller models require less data transfer, making it easier to deploy and update applications even with limited bandwidth.
+- ** Privacy-preserving applications: For applications that involve processing sensitive user data, anansi's ability to run efficiently on various platforms, including edge devices, can be valuable. This allows for local data processing, reducing the need to send sensitive information to remote servers for analysis, thus better preserving user privacy. Faiss and Milvus, with their focus on server and desktop environments, might not be as well-suited for these privacy-conscious scenarios.
+
+
+### Architecture overview
+
 
 ---
 
