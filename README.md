@@ -76,7 +76,7 @@ By employing quantization, the vector size of each embedding is reduced from X t
 - **Privacy-preserving applications**: For applications that involve processing sensitive user data, anansi's ability to run efficiently on various platforms, including web browsers, smartphones and edge devices, can be valuable. This allows for local data processing, reducing the need to send sensitive information to remote servers for analysis, thus better preserving user privacy. Faiss and Milvus, with their focus on server and desktop environments, might not be as well-suited for these privacy-conscious scenarios.
 
 
-## Architecture overview 🤔
+## Architecture overview
 
 
 ## FAQ
