@@ -1,7 +1,0 @@
-{
-  "label": "Emebdds",
-  "position": 2,
-  "link": {
-    "description": "Emebedds is a general-purpose embedding service that converts text and images into multi-dimensional vectors. It is focused on providing turn-key access to embedding models available on the Massive Text Embedding leaderboard."
-  }
-}

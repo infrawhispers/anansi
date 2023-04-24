@@ -1,1 +1,0 @@
-module.exports = [{"type":"doc","id":"embedds/embedds"},{"type":"category","label":"Api","link":{"type":"doc","id":"embedds/api"},"items":[{"type":"doc","id":"embedds/api-encode","label":"encode","className":"api-method post"},{"type":"doc","id":"embedds/api-initialize-model","label":"initialize_models","className":"api-method post"}]}];
