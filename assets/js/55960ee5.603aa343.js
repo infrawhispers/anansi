@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkdocs=self.webpackChunkdocs||[]).push([[121],{88070:t=>{t.exports=JSON.parse('[{"label":"documentation","permalink":"/anansi/tags/documentation","count":1},{"label":"getting started","permalink":"/anansi/tags/getting-started","count":1},{"label":"quickstart","permalink":"/anansi/tags/quickstart","count":1}]')}}]);

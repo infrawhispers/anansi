@@ -1,0 +1,1 @@
+"use strict";(self.webpackChunkdocs=self.webpackChunkdocs||[]).push([[259],{97905:e=>{e.exports=JSON.parse('{"label":"getting started","permalink":"/anansi/tags/getting-started","allTagsPath":"/anansi/tags","count":1,"items":[{"id":"intro","title":"Overview","description":"Open Source Tooling for Applied Machine Learning","permalink":"/anansi/"}]}')}}]);

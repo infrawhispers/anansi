@@ -1,1 +1,0 @@
-"use strict";(self.webpackChunkdocs=self.webpackChunkdocs||[]).push([[592],{51533:e=>{e.exports=JSON.parse('{"label":"getting started","permalink":"/tags/getting-started","allTagsPath":"/tags","count":1,"items":[{"id":"intro","title":"Overview","description":"Open Source Tooling for Applied Machine Learning","permalink":"/"}]}')}}]);
