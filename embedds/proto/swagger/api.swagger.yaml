@@ -23,7 +23,7 @@ paths:
         when running under with a GPU accelerated <a
         href='https://onnxruntime.ai/docs/execution-providers/'
         target='_blank'>ExecutionProvider.</a> Recommended sizes can be found at
-        <a href='/embedds/model-details'
+        <a href='/embedds/supported-models'
         target='_blank'>embedds/model-details</a> and embedds will attempt to
         split and batch encoding requests.<br/>----<br/><b>Not all models
         support [text, instructions, image, image_uri]</b> a breakdown of

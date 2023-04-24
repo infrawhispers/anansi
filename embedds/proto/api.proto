@@ -130,7 +130,7 @@ service Api {
         "If the model does not exist or has not been loaded, an error will be returned for that particular data item. "
         "<br/><br/>It is recommended that multiple pieces of content are specified in a single request to take advantage of batching, "
         "especially when running under with a GPU accelerated <a href='https://onnxruntime.ai/docs/execution-providers/' target='_blank'>ExecutionProvider.</a> "
-        "Recommended sizes can be found at <a href='/embedds/model-details' target='_blank'>embedds/model-details</a> and embedds will "
+        "Recommended sizes can be found at <a href='/embedds/supported-models' target='_blank'>embedds/model-details</a> and embedds will "
         "attempt to split and batch encoding requests."
         "<br/>----<br/>"
         "<b>Not all models support [text, instructions, image, image_uri]</b> a breakdown of present support is outlined below:"

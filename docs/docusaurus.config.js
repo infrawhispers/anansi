@@ -18,7 +18,7 @@ const config = {
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'anansi', // Usually your GitHub org/user name.
+  organizationName: 'infrawhispers', // Usually your GitHub org/user name.
   projectName: 'anansi', // Usually your repo name.
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
@@ -119,7 +119,7 @@ const config = {
               },
               {
                 label: "Swagger Spec",
-                to: '/docs/swagger-api/embedds',
+                to: '/swagger-api/embedds',
               },
             ],
           },

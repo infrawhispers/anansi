@@ -54,8 +54,8 @@ With one or both of the aforementioned pieces, developers can quickly augment th
 Please refer to the detailed documenation for:
 
 <ul>
-<li><a href="/embedds">Embedds</a> (embedding generation)</li>
-<li><a href="/horus">Horus</a> (embedding search)</li>
+<li><a href="/embedds/getting-started" target="_blank">Embedds</a> (embedding generation)</li>
+<li><a href="https://github.com/infrawhispers/anansi/tree/main/core" target="_blank">Horus</a> (embedding search, WIP)</li>
 </ul>
 
 ## Contributing
