@@ -1,0 +1,26 @@
+[
+	{
+		"_id": "123456",
+		"title": "Population dynamics of head-direction neurons during drift and reorientation",
+		"paragraphs": [
+			{
+				"content": "In the version of this article initially published, there was a typographical error in the seventh sentence",
+			}
+		]
+	},
+	{
+		"_id": "456789",
+		"title": "Small Banks Rush to Reassure Investors as Shares Plunge",
+		"paragraphs": [
+			{
+				"content": "PacWest said it had been approached by potential “partners and investors.” Western Alliance denied a report it was seeking a sale.",
+			},
+			{
+				"content": "PacWest said it had been approached by potential “partners and investors.",
+			},
+			{
+				"content": "Western Alliance denied a report it was seeking a sale.",
+			}
+		]
+	}
+]

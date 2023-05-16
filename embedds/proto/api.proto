@@ -1,0 +1,387 @@
+syntax = "proto3";
+package api;
+
+import "google/protobuf/struct.proto";
+import "google/api/annotations.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+
+option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
+  info: {
+    title: "embedds";
+    version: "1.0.0";
+    contact: {
+      name: "anansi";
+      url: "https://github.com/infrawhispers/anansi";
+      email: "infrawhispers@proton.me";
+    };
+    license: {
+      name: "Apache 2.0 License";
+      url: "https://github.com/infrawhispers/anansi/blob/main/LICENSE"
+    };
+  };
+  schemes: HTTPS;
+};
+
+message InitializeModelRequest {
+  repeated ModelSettings models = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+    description: "A list of models to be initialized"
+    example: '[{"model_name": "M_INSTRUCTOR_BASE", "num_threads": 4, "parallel_execution": true}]'
+  }];
+}
+
+message ModelSettings {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      description:
+        "Configuration settings for the instantiaion of an onnx "
+        "model"
+      required: ["model_name"]
+    }
+  };
+  ModelClass model_class = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "corresponding class in which the model_name belongs to"}];
+  string model_name = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "specific name of the model to apply the encoding transformation"}];
+  uint32 num_threads = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+      "The number of threads to parallelize the execution of "
+      "the graph - if the graph can be parallelized. <br/> If "
+      "unset, defaults to the available parallelism on the "
+      "underlying machine."
+}];
+  bool parallel_execution = 4 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+      "Enable/disable the parallel execution of the graph. "
+      "Parallel execution can improve model execution speed at "
+      "the cost of increased memory usage."
+}];
+}
+
+enum EncodingModelDevice {
+  MD_UNKNOWN = 0;
+  MD_CPU = 1;
+  MD_CUDA = 2;
+  MD_TENSOR = 3;
+}
+
+message InitializeModelResponse {
+  repeated ModelInitResult results = 1;
+}
+message ModelInitResult {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      description:
+        "Configuration settings for the instantiaion of an onnx "
+        "model";
+      read_only: true
+    }
+  };
+  ModelClass model_class = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "corresponding class in which the model_name belongs to"}];
+  string model_name = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "specific name of the model to apply the encoding transformation"}];
+  bool initialized = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "whether or not the model was successfully initalized"}];
+  string err_message = 4 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "error details outlining why the model could not be initialized"}];
+}
+enum ModelClass {
+  ModelClass_Unknown = 0;
+  ModelClass_CLIP = 1;
+  ModelClass_INSTRUCTOR = 2;
+  ModelClass_E5 = 3;
+}
+
+message EncodeItem {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    json_schema: {
+      description:
+        "Minimal encoding unit associating a piece of content "
+        "[text, image, image_uri] with a selected model"
+      required: ["model"]
+    }
+  };
+  ModelClass model_class = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "corresponding class in which the model_name belongs to"}];
+  string model_name = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "specific name of the model to apply the encoding transformation"}];
+  repeated string text = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated text to encode"}];
+  repeated string instructions = 4 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+      "a list of instructions to pass to ```INSTRUCTOR``` "
+      "based models"
+}];
+  repeated bytes image = 5 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated raw jpeg bytes"}];
+  repeated string image_uri = 6 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated uris to fetch image data from"}];
+}
+
+message EncodeRequest {
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {example: '{"data":[{"model_class":"ModelClass_INSTRUCTOR","model_name":"INSTRUCTOR_LARGE", "text":["3D ActionSLAM: wearable person tracking ...","Inside Gohar World and the Fine, Fantastical Art"],"instructions":["Represent the Science title:","Represent the Magazine title:"]}]}'};
+  repeated EncodeItem data = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated data items to generate encodings for"}];
+}
+
+message EncodeResult {
+  string err_message = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "explanation for why the content could not be encoded"}];
+  repeated float embedding = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "embedding representation of the the content"}];
+}
+message EncodeResponse {
+  repeated EncodeResult results = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
+      "list of embedding results corresponding to the ordered "
+      "content submitted"
+}];
+}
+
+// message IndexItem {
+//   string id = 1;
+//   string text = 2;
+//   string instructions = 3;
+//   bytes image = 4;
+//   string image_uri = 5;
+// }
+// // indexing requests that will be made
+// message IndexDataRequest {
+//   repeated IndexItem data = 1;
+// }
+// message SearchIndexRequest {
+//   IndexItem search_req = 1;
+// }
+// message CreateIndexRequest {
+//   string index_name = 1;
+//   IndexType index_type = 2;
+// }
+// message DeleteIndexRequest {
+//   string index_name = 1;
+// }
+
+enum MetricType {
+  MetricType_UNKNOWN = 0;
+  MetricType_COSINE = 1;
+  MetricType_L1 = 2;
+  MetricType_L2 = 3;
+  MetricType_HAMMING = 4;
+}
+enum IndexType {
+  IndexType_UNKNOWN = 0;
+  IndexType_FLAT = 1;
+  IndexType_DiskANNMem = 2;
+}
+
+message FlatParams {
+  uint32 dimensions = 1;
+  uint32 segment_size_kb = 2;
+}
+
+message CreateIndexRequest {
+  string name = 1;
+  repeated string fields = 2;
+  IndexType index_type = 3;
+  MetricType metric_type = 4;
+  oneof index_config  {
+    FlatParams flat_params = 7;
+  }
+  // items that are used for the auto-generation of embeddings
+  string embedding_model_name = 5;
+  ModelClass embedding_model_class = 6; 
+}
+message CreateIndexResponse {}
+
+message Embedding {
+  string id = 1;
+  repeated float vals = 2;
+}
+
+message Content {
+  string id = 1;
+  oneof data {
+    string text = 2;
+    bytes image = 3;
+    string image_uri = 4;
+  }
+}
+
+message Embeddings {
+  repeated Embedding embeddings = 1;
+}
+
+message SearchQuery {
+  oneof query {
+    Content content = 1;
+    Embedding embedding = 2;
+  }
+}
+
+message SearchIndexRequest {
+  string index_name = 1;
+  repeated SearchQuery queries = 2;
+  // oneof search_request {
+  //   // we cannot have a repeated field of JSON
+  //   Embeddings embeddings = 2;
+  //   string json = 3;
+  // }
+  repeated string attributes = 4;
+  map<string, float> weighting = 5;
+  uint32 per_search_limit = 6;
+}
+
+message NearestNeighbor {
+  string id = 1;
+  float distance = 2;
+  string document = 3;
+}
+message SearchResponse {
+  string search_id = 1;
+  repeated NearestNeighbor nns = 2;
+  string err_message = 3; 
+}
+message SearchIndexResponse {
+  repeated SearchResponse response = 1;
+}
+
+message DeactivateIndexRequest{}
+message DeactivateIndexResponse{}
+
+message DeleteIndexRequest {
+  string name = 1;
+}
+message DeleteIndexResponse {}
+
+message GetIndicesRequest {}
+message GetIndicesResponse{}
+
+
+message IndexResult {
+  string err_message = 1;
+  bool is_success = 2;
+  string data_id = 3;
+}
+
+message IndexDataRequest {
+  string data = 1;
+  string index_name = 2;
+  repeated string no_embedds = 3;
+}
+
+message IndexDataResponse {
+  repeated IndexResult results = 1;
+}
+
+service Api {
+
+  rpc IndexData(IndexDataRequest) returns (IndexDataResponse) {
+    option (google.api.http) = {
+      post: "/index"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "index_data";
+      description: 
+      "indexes all data provided, optionally generating the necessary embeddings as needed "
+      consumes: "application/json";
+      produces: "application/json";
+    };
+  };
+
+  rpc GetIndices(GetIndicesRequest) returns (GetIndicesResponse) {
+    option (google.api.http) = {
+      get: "/index"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "get_index";
+      description: 
+      "fetches all initialized and running indices "
+      consumes: "application/json";
+      produces: "application/json";
+    };
+  }
+
+  rpc DeleteIndex(DeleteIndexRequest) returns (DeleteIndexResponse) {
+    option (google.api.http) = {
+      post: "/delete_index"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "deactivate_index";
+      description: 
+      "deletes a index - freeing the resources allocated to said index and removing any allocated disk resources. "
+      consumes: "application/json";
+      produces: "application/json";
+    };
+  }
+
+  rpc DeactivateIndex(DeactivateIndexRequest) returns (DeactivateIndexResponse) {
+    option (google.api.http) = {
+      post: "/deactivate_index"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "deactivate_index";
+      description: 
+      "Deactivates a index - freeing the resources allocated to said index and optionally writing all changes to disk. "
+      consumes: "application/json";
+      produces: "application/json";
+    };
+  };
+
+  rpc SearchIndex(SearchIndexRequest) returns (SearchIndexResponse) {
+    option (google.api.http) = {
+      post: "/search_index"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "search_index";
+      description:
+      ""
+      consumes: "application/json";
+      produces: "application/json";
+    };
+  };
+
+  rpc CreateIndex(CreateIndexRequest) returns (CreateIndexResponse) {
+    option (google.api.http) = {
+      post: "/create_index"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "create_index";
+      description: 
+      "Creates a index which allows for the efficient retrieval and storage of content based on their vector representations. "
+      consumes: "application/json";
+      produces: "application/json";
+    };
+  };
+
+  rpc Encode(EncodeRequest) returns (EncodeResponse) {
+    option (google.api.http) = {
+      post: "/encode"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "encode";
+      description:
+        "Generates a vector representation of text or images using the specified embedding model. "
+        "If the model does not exist or has not been loaded, an error will be returned for that particular data item. "
+        "<br/><br/>It is recommended that multiple pieces of content are specified in a single request to take advantage of batching, "
+        "especially when running under with a GPU accelerated <a href='https://onnxruntime.ai/docs/execution-providers/' target='_blank'>ExecutionProvider.</a> "
+        "Recommended sizes can be found at <a href='/embedds/supported-models' target='_blank'>embedds/model-details</a> and embedds will "
+        "attempt to split and batch encoding requests."
+        "<br/>----<br/>"
+        "<b>Not all models support [text, instructions, image, image_uri]</b> a breakdown of present support is outlined below:"
+        "<ul>"
+        "<li>ModelClass_INSTRUCTOR - requires: {text, instructions}</li>"
+        "<li>ModelClass_CLIP - any_of: {text, image_uri, image}</li>"
+        "</ul>"
+        "";
+      consumes: "application/json";
+      produces: "application/json";
+    };
+  }
+
+  rpc InitializeModel(InitializeModelRequest) returns (InitializeModelResponse) {
+    option (google.api.http) = {
+      post: "/initalize_models"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "initialize_models";
+      description:
+        "Intializes an onnx model, adding it to the pool of models available for embedding generation. "
+        "ONNX models are loaded from the folder designated by ```EMBBEDDS_CACHE_FOLDER``` and it is recommended "
+        "that this folder be volume mounted if running within a container."
+        "<br/><br/>If the model is missing, the server will attempt to download the corresponding file from a remote source."
+        "<br/><br/>embedds must be created with ```EMBEDDS_ALLOW_ADMIN=true``` as the unrestricted creation of models can lead "
+        "to resource starvation. If you are exposing the process to non-trusted clients, we recommended that ```EMBEDDS_ALLOW_ADMIN```"
+        " be set to false.";
+      consumes: "application/json";
+      produces: "application/json";
+    };
+  }
+}

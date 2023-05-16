@@ -1,0 +1,21 @@
+[package]
+name = "optimizer"
+version = "0.1.0"
+edition = "2021"
+description = "houses various methods that seek to increase embedding classification + search performance"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0.152", features = ["derive"] }
+anyhow = "1.0.69"
+byteorder = "1.4.3"
+rand = "0.8.5"
+getrandom = { version = "0.2.8", features = ["js"] }
+rand_split = "0.2.1"
+itertools = "0.10.5"
+tch = "0.11.0"
+serde_json = "1.0.96"
+serde_derive = "1.0.160"
+ndarray = "0.15.6"
+tracing = "0.1.38"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter", "fmt"] }

@@ -1,0 +1,13 @@
+infra/**/*
+infra/
+target/
+target/**/*
+.cache/
+.cache/**/*
+lib/.data/*
+lib/.data/**/*
+libtorch/*
+libtorch/**/*
+model_transform/.onnx_output
+model_transform/.onnx_output/**/*
+*.onnx

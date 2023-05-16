@@ -1,0 +1,1 @@
+module.exports = [{"type":"doc","id":"swagger-api/embedds"},{"type":"category","label":"Api","link":{"type":"doc","id":"swagger-api/api"},"items":[{"type":"doc","id":"swagger-api/api-encode","label":"encode","className":"api-method post"},{"type":"doc","id":"swagger-api/api-initialize-model","label":"initialize_models","className":"api-method post"}]}];

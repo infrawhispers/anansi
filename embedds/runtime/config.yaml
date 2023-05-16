@@ -1,0 +1,14 @@
+models:
+  # - name: INSTRUCTOR_LARGE
+  #   class: ModelClass_INSTRUCTOR
+  #   num_threads: 4
+  #   parallel_execution: true
+  # - name: E5_SMALL
+  #   class: ModelClass_E5
+  #   num_threads: 12
+  #   parallel_execution: true
+  # this is the default OPENAI CLIP model that is used by JinaAi
+  # including it makes it easy to compare this embedding service.
+  - name: VIT_L_14_336_OPENAI
+    class: ModelClass_CLIP
+    num_threads: 4
