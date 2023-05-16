@@ -667,7 +667,7 @@ impl JSONIndexManager {
         Ok(res)
     }
 
-    pub fn extract_documents(
+    pub fn transform_index_data(
         &self,
         index_name: &str,
         data: &str,

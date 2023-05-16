@@ -275,9 +275,8 @@ impl ApiServerImpl {
     fn _index_data(&self, index_name: &str, data: &str) -> anyhow::Result<()> {
         let docs = self
             .index_mgr
-            .extract_documents(index_name, data)
+            .transform_index_data(index_name, data)
             .with_context(|| "failed to extract the documents from the supplied JSON")?;
-        // println!("docs: {docs:?}");
         let mut doc_embedds: Vec<embeddings::IndexItems> = Vec::new();
         for item in docs {
             if item.embedds.is_some() {
