@@ -84,7 +84,45 @@ enum ModelClass {
   ModelClass_E5 = 3;
 }
 
-message EncodeItem {
+
+
+message Content {
+  string id = 1;
+  oneof data {
+    string value = 2;
+    bytes bytes = 3;
+  }
+  string instruction = 4;
+}
+
+message TextContent {
+  repeated Content data = 1;
+}
+
+message ImageContent {
+  repeated Content data = 1;
+}
+
+message ImageURIContent {
+  repeated Content data = 1;
+}
+
+// message Content {
+//   oneof data {
+//     TextContent text = 1;
+//     ImageContent image = 2;
+//     ImageURIContent image_uris = 3;
+//   }
+//   // optional id that can be set to associate the provided content with the 
+//   // string id = 1;
+//   // oneof data {
+//   //   string text = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated text to encode"}];
+//   //   bytes image = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated raw jpeg bytes"}];
+//   //   string image_uri = 4  [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated uris to fetch image data from"}];
+//   // }
+// }
+
+message EncodeBatch {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
     json_schema: {
       description:
@@ -95,18 +133,21 @@ message EncodeItem {
   };
   ModelClass model_class = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "corresponding class in which the model_name belongs to"}];
   string model_name = 2 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "specific name of the model to apply the encoding transformation"}];
-  repeated string text = 3 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated text to encode"}];
-  repeated string instructions = 4 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description:
-      "a list of instructions to pass to ```INSTRUCTOR``` "
-      "based models"
-}];
-  repeated bytes image = 5 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated raw jpeg bytes"}];
-  repeated string image_uri = 6 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated uris to fetch image data from"}];
+  // each model has particular content requirements see the documentation
+  // for valid (model_class, content) pairs
+  oneof content {
+    TextContent text = 3;
+    ImageContent images = 4;
+    ImageURIContent image_uris = 5;
+  }
 }
 
 message EncodeRequest {
   option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {example: '{"data":[{"model_class":"ModelClass_INSTRUCTOR","model_name":"INSTRUCTOR_LARGE", "text":["3D ActionSLAM: wearable person tracking ...","Inside Gohar World and the Fine, Fantastical Art"],"instructions":["Represent the Science title:","Represent the Magazine title:"]}]}'};
-  repeated EncodeItem data = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated data items to generate encodings for"}];
+  // batching occurs at the EncodeBundle level - to ensure proper optimization, one will need
+  // to ensure that for a given model, you provide _all_ the data that must be encoded by
+  // said model
+  repeated EncodeBatch batches = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated data items to generate encodings for"}];
 }
 
 message EncodeResult {
@@ -179,23 +220,17 @@ message Embedding {
   repeated float vals = 2;
 }
 
-message Content {
-  string id = 1;
-  oneof data {
-    string text = 2;
-    bytes image = 3;
-    string image_uri = 4;
-  }
-}
-
 message Embeddings {
   repeated Embedding embeddings = 1;
 }
 
 message SearchQuery {
   oneof query {
-    Content content = 1;
-    Embedding embedding = 2;
+    // Content content = 1;
+    Content text = 1;
+    Content image_uri = 2;
+    Content image_bytes = 3;
+    Embedding embedding = 4;
   }
 }
 

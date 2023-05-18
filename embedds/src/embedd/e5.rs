@@ -31,7 +31,7 @@ impl Embedder for E5Embedder {
                 unreachable!("incorrect params passed for construction")
             }
         };
-        self.encode(req.text)
+        self.encode(&req.text)
     }
 }
 

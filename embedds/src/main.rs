@@ -16,7 +16,7 @@ use tracing::{info, warn, Level};
 
 use embeddings::api::api_server::{Api, ApiServer};
 use embeddings::api::{
-    EncodeItem, EncodeRequest, EncodeResponse, EncodeResult, EncodingModelDevice,
+    EncodeBatch, EncodeRequest, EncodeResponse, EncodeResult, EncodingModelDevice,
     InitializeModelRequest, InitializeModelResponse, ModelClass, ModelInitResult, ModelSettings,
 };
 
@@ -140,136 +140,226 @@ impl ApiServerImpl {
 
     fn transform_encode_req<'a>(
         &'a self,
-        data: &'a Vec<EncodeItem>,
+        data: &'a Vec<EncodeBatch>,
     ) -> Result<Vec<(&str, &str, embedder::EmebeddingRequest)>, Status> {
         let mut req: Vec<(&str, &str, embedder::EmebeddingRequest)> = Vec::new();
         for i in 0..data.len() {
-            let item = &data[i];
+            let bundle = &data[i];
+            let content = bundle.content.as_ref().ok_or_else(|| {
+                Status::new(Code::InvalidArgument, format!("content must be specified",))
+            })?;
             let model_class;
-            match ModelClass::from_i32(item.model_class) {
+            match ModelClass::from_i32(bundle.model_class) {
                 Some(val) => model_class = val,
                 None => {
                     return Err(Status::new(
                         Code::InvalidArgument,
                         format!(
                             "unknown model class: {} set at idx: {}",
-                            item.model_class, i
+                            bundle.model_class, i
                         ),
                     ));
                 }
             }
             match model_class {
-                ModelClass::E5 => req.push((
-                    model_class.as_str_name(),
-                    &item.model_name,
-                    embedder::EmebeddingRequest::E5Request {
-                        params: E5Params {
-                            text: &data[i].text,
-                        },
-                    },
-                )),
-                ModelClass::Instructor => {
-                    if data[i].text.len() != data[i].instructions.len() {
+                ModelClass::Unknown => todo!(),
+                ModelClass::Clip => match content {
+                    embeddings::api::encode_batch::Content::Text(c) => {
+                        let mut text: Vec<String> = Vec::with_capacity(c.data.len());
+                        let mut instructions: Vec<String> = Vec::with_capacity(c.data.len());
+                        for o in c.data.iter() {
+                            instructions.push(o.instruction.to_string());
+                            match &o.data {
+                                Some(embeddings::api::content::Data::Bytes(_)) | &None => {
+                                    return Err(Status::new(
+                                        Code::InvalidArgument,
+                                        format!("text requires string values"),
+                                    ))
+                                }
+                                Some(embeddings::api::content::Data::Value(v)) => {
+                                    text.push(v.to_string())
+                                }
+                            }
+                        }
+                        req.push((
+                            model_class.as_str_name(),
+                            &bundle.model_name,
+                            embedder::EmebeddingRequest::CLIPRequest {
+                                params: CLIPParams::Text { vals: text },
+                            },
+                        ))
+                    }
+                    &embeddings::api::encode_batch::Content::Images(_)
+                    | &embeddings::api::encode_batch::Content::ImageUris(_) => {
                         return Err(Status::new(
                             Code::InvalidArgument,
-                            format!("INSTUCTOR class models require pairs of (text, instructions) | text.len: {}, instructions.len: {}", data[i].text.len(),data[i].instructions.len() )
+                            format!("model_class: {model_class:?} only supports text encoding"),
+                        ))
+                    }
+                },
+                ModelClass::Instructor => match content {
+                    embeddings::api::encode_batch::Content::Text(c) => {
+                        let mut text: Vec<String> = Vec::with_capacity(c.data.len());
+                        let mut instructions: Vec<String> = Vec::with_capacity(c.data.len());
+                        for o in c.data.iter() {
+                            instructions.push(o.instruction.to_string());
+                            match &o.data {
+                                Some(embeddings::api::content::Data::Bytes(_)) | &None => {
+                                    return Err(Status::new(
+                                        Code::InvalidArgument,
+                                        format!("text requires string values"),
+                                    ))
+                                }
+                                Some(embeddings::api::content::Data::Value(v)) => {
+                                    text.push(v.to_string())
+                                }
+                            }
+                        }
+                        req.push((
+                            model_class.as_str_name(),
+                            &bundle.model_name,
+                            embedder::EmebeddingRequest::InstructorRequest {
+                                params: InstructorParams {
+                                    text: text,
+                                    instructions: instructions,
+                                },
+                            },
+                        ))
+                    }
+                    &embeddings::api::encode_batch::Content::Images(_)
+                    | &embeddings::api::encode_batch::Content::ImageUris(_) => {
+                        return Err(Status::new(
+                            Code::InvalidArgument,
+                            format!("model_class: {model_class:?} only supports text encoding"),
+                        ))
+                    }
+                },
+                ModelClass::E5 => match content {
+                    embeddings::api::encode_batch::Content::Text(c) => {
+                        let mut text: Vec<String> = Vec::with_capacity(c.data.len());
+                        for o in c.data.iter() {
+                            match &o.data {
+                                Some(embeddings::api::content::Data::Bytes(_)) | &None => {
+                                    return Err(Status::new(
+                                        Code::InvalidArgument,
+                                        format!("text requires string values"),
+                                    ))
+                                }
+                                Some(embeddings::api::content::Data::Value(v)) => {
+                                    text.push(v.to_string())
+                                }
+                            }
+                        }
+                        req.push((
+                            model_class.as_str_name(),
+                            &bundle.model_name,
+                            embedder::EmebeddingRequest::E5Request {
+                                params: E5Params { text: text },
+                            },
                         ));
                     }
-                    req.push((
-                        model_class.as_str_name(),
-                        &item.model_name,
-                        embedder::EmebeddingRequest::InstructorRequest {
-                            params: InstructorParams {
-                                text: &data[i].text,
-                                instructions: &data[i].instructions,
-                            },
-                        },
-                    ))
-                }
-                ModelClass::Clip => {
-                    if data[i].text.len() != 0 {
-                        req.push((
-                            model_class.as_str_name(),
-                            &item.model_name,
-                            embedder::EmebeddingRequest::CLIPRequest {
-                                params: CLIPParams::Text {
-                                    vals: &data[i].text,
-                                },
-                            },
+                    &embeddings::api::encode_batch::Content::Images(_)
+                    | &embeddings::api::encode_batch::Content::ImageUris(_) => {
+                        return Err(Status::new(
+                            Code::InvalidArgument,
+                            format!("model_class: {model_class:?} only supports text encoding"),
                         ))
                     }
-                    if data[i].image_uri.len() != 0 {
-                        req.push((
-                            model_class.as_str_name(),
-                            &item.model_name,
-                            embedder::EmebeddingRequest::CLIPRequest {
-                                params: CLIPParams::Uri {
-                                    vals: &data[i].image_uri,
-                                },
-                            },
-                        ))
-                    }
-                    if data[i].image.len() != 0 {
-                        req.push((
-                            model_class.as_str_name(),
-                            &item.model_name,
-                            embedder::EmebeddingRequest::CLIPRequest {
-                                params: CLIPParams::UriBytes {
-                                    vals: &data[i].image,
-                                },
-                            },
-                        ))
-                    }
-                }
-                ModelClass::Unknown => {
-                    return Err(Status::new(
-                        Code::InvalidArgument,
-                        format!(
-                            "unknown model_class: {} set at idx: {}",
-                            item.model_class, i
-                        ),
-                    ))
-                }
+                },
             }
         }
         Ok(req)
     }
-    fn _search_index(&self, req: &embeddings::api::SearchIndexRequest) -> anyhow::Result<()> {
+
+    fn _search_index(
+        &self,
+        req: &embeddings::api::SearchIndexRequest,
+    ) -> anyhow::Result<embeddings::api::SearchIndexResponse> {
         let queries = self
             .index_mgr
             .transform_search_req(&req.index_name, &req.queries)
             .with_context(|| "failed to transform the search req")?;
-        let mut e: Vec<embeddings::IndexItems> = Vec::new();
+        if req.per_search_limit > 1024 {
+            // this prevents us from massive allocations for a pool of available
+            // nns in the backends
+            bail!(
+                "per_search_limit: {0} must be lower than 1024",
+                req.per_search_limit
+            );
+        }
+        // we keep these around to hold the embeddings that are _generated_ by the
+        // embedding process
+        let mut isearch: Vec<embeddings::manager::json_manager::IndexSearch> = Vec::new();
+        let attributes: Vec<&str> = req.attributes.iter().map(|s| s.as_ref()).collect();
         queries
             .into_iter()
             .try_for_each(|q| -> anyhow::Result<()> {
                 if q.embedds.is_some() {
-                    e.push(q);
+                    let embedds = q.embedds.ok_or_else(|| {
+                        anyhow::anyhow!("unexpectedly, the to_embedd request is None")
+                    })?;
+                    embedds.into_iter().for_each(|e| {
+                        isearch.push(embeddings::manager::json_manager::IndexSearch {
+                            embedding: e,
+                            attributes: &attributes,
+                            weighting: &req.weighting,
+                            limit: req.per_search_limit as usize,
+                        });
+                    });
                     return Ok(());
                 }
                 if q.to_embedd.is_some() {
-                    let req = q.to_embedd.ok_or_else(|| {
+                    let req_embedds = q.to_embedd.ok_or_else(|| {
                         anyhow::anyhow!("unexpectedly, the to_embedd request is None")
                     })?;
-                    let req_vec = &vec![req];
+                    let req_vec = &vec![req_embedds.clone()];
                     let req_pairs: Vec<(&str, &str, embedder::EmebeddingRequest)> =
                         self.transform_encode_req(&req_vec)?;
                     for (model_class, model_name, embedding_req) in req_pairs.iter() {
-                        e.push(embeddings::IndexItems {
-                            ids: q.ids.clone(),
-                            sub_indices: q.sub_indices.clone(),
-                            embedds: Some(self.embedder_mgr.encode(
-                                model_class,
-                                model_name,
-                                embedding_req,
-                            )?),
-                            to_embedd: None,
-                        });
+                        self.embedder_mgr
+                            .encode(model_class, model_name, embedding_req)?
+                            .into_iter()
+                            .for_each(|embedd| {
+                                isearch.push(embeddings::manager::json_manager::IndexSearch {
+                                    embedding: embedd,
+                                    attributes: &attributes,
+                                    weighting: &req.weighting,
+                                    limit: req.per_search_limit as usize,
+                                });
+                            });
                     }
                 }
                 Ok(())
             })?;
-        Ok(())
+        let mut resp = embeddings::api::SearchIndexResponse {
+            response: Vec::new(),
+        };
+        // we now can issue the search request
+        let results = isearch
+            .iter()
+            .map(|req_search| self.index_mgr.search(&req.index_name, req_search))
+            .collect::<Vec<anyhow::Result<Vec<embeddings::manager::json_manager::NodeHit>>>>();
+        // then form the results object that we send out to the client
+        results.into_iter().for_each(|result| match result {
+            Ok(nns) => resp.response.push(embeddings::api::SearchResponse {
+                search_id: "".to_string(),
+                nns: nns
+                    .into_iter()
+                    .map(|nn| embeddings::api::NearestNeighbor {
+                        id: nn.id,
+                        distance: nn.distance,
+                        document: "".to_string(),
+                    })
+                    .collect::<Vec<embeddings::api::NearestNeighbor>>(),
+                err_message: "".to_string(),
+            }),
+            Err(err) => resp.response.push(embeddings::api::SearchResponse {
+                search_id: "".to_string(),
+                nns: Vec::new(),
+                err_message: err.to_string(),
+            }),
+        });
+        Ok(resp)
     }
 
     fn _index_data(&self, index_name: &str, data: &str) -> anyhow::Result<()> {
@@ -352,7 +442,7 @@ impl Api for ApiServerImpl {
         &self,
         request: Request<EncodeRequest>,
     ) -> Result<Response<EncodeResponse>, Status> {
-        let data: Vec<EncodeItem> = request.into_inner().data;
+        let data: Vec<EncodeBatch> = request.into_inner().batches;
         let req_pairs: Vec<(&str, &str, embedder::EmebeddingRequest)> =
             self.transform_encode_req(&data)?;
         let mut encoding_results: Vec<EncodeResult> = Vec::with_capacity(req_pairs.len());
@@ -436,62 +526,10 @@ impl Api for ApiServerImpl {
         request: Request<embeddings::api::SearchIndexRequest>,
     ) -> Result<Response<embeddings::api::SearchIndexResponse>, Status> {
         let req = request.into_inner();
-        let mut response = embeddings::api::SearchIndexResponse {
-            response: Vec::new(),
-        };
         match self._search_index(&req) {
-            Ok(()) => {}
+            Ok(response) => return Ok(Response::new(response)),
             Err(err) => return Err(Status::new(Code::Internal, format!("{err:?}"))),
         }
-
-        // match req.search_request {
-        //     Some(embeddings::api::search_index_request::SearchRequest::Embeddings(e_req)) => {
-        //         let results = e_req.embeddings.iter().for_each(|embedd| {
-        //             let attrs: Vec<&str> = req.attributes.iter().map(|s| s as &str).collect();
-        //             let res = self.index_mgr.search(
-        //                 &req.index_name,
-        //                 &embeddings::manager::json_manager::IndexSearch {
-        //                     embedding: &embedd.vals,
-        //                     attributes: &attrs,
-        //                     weighting: HashMap::new(),
-        //                     limit: req.per_search_limit as usize,
-        //                 },
-        //             );
-        //             match res {
-        //                 Ok(nns) => {
-        //                     let nns_proto = nns
-        //                         .iter()
-        //                         .map(|nn| embeddings::api::NearestNeighbor {
-        //                             id: nn.id.clone(),
-        //                             distance: nn.distance,
-        //                             document: "".to_string(),
-        //                         })
-        //                         .collect();
-        //                     response.response.push(embeddings::api::SearchResponse {
-        //                         search_id: embedd.id.clone(),
-        //                         nns: nns_proto,
-        //                         err_message: "".to_string(),
-        //                     });
-        //                 }
-        //                 Err(err) => {
-        //                     response.response.push(embeddings::api::SearchResponse {
-        //                         search_id: "".to_string(),
-        //                         nns: Vec::new(),
-        //                         err_message: err.to_string(),
-        //                     });
-        //                 }
-        //             }
-        //         });
-        //     }
-        //     Some(embeddings::api::search_index_request::SearchRequest::Json(j)) => {}
-        //     None => {
-        //         return Err(Status::new(
-        //             Code::Internal,
-        //             format!("one_of {{embeddings, json}} must be specified"),
-        //         ))
-        //     }
-        // }
-        Ok(Response::new(response))
     }
 
     async fn create_index(
@@ -628,7 +666,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(server) => {
             apiserver = server;
         }
-        Err(err) => panic!("unable to create the apiserver: {}", err),
+        Err(err) => panic!("unable to create the apiserver: {:?}", err),
     }
     // STEP 4 - initialize the models that should be preloaded on startup.
     for idx in 0..model_configs.len() {

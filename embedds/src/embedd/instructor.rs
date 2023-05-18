@@ -32,7 +32,7 @@ impl Embedder for InstructorEmbedder {
                 unreachable!("incorrect params passed for construction")
             }
         };
-        self.encode(req_instructor.instructions, req_instructor.text)
+        self.encode(&req_instructor.instructions, &req_instructor.text)
     }
 }
 

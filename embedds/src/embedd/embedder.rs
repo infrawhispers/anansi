@@ -15,27 +15,27 @@ pub struct EmbedderParams<'a> {
 
 #[derive(Debug)]
 pub enum CLIPParams<'a> {
-    Text { vals: &'a [String] },
+    Text { vals: Vec<String> },
     Uri { vals: &'a [String] },
     UriBytes { vals: &'a Vec<Vec<u8>> },
 }
 
 #[derive(Debug)]
-pub struct InstructorParams<'a> {
-    pub text: &'a [String],
-    pub instructions: &'a [String],
+pub struct InstructorParams {
+    pub text: Vec<String>,
+    pub instructions: Vec<String>,
 }
 
 #[derive(Debug)]
-pub struct E5Params<'a> {
-    pub text: &'a [String],
+pub struct E5Params {
+    pub text: Vec<String>,
 }
 
 #[derive(Debug)]
 pub enum EmebeddingRequest<'a> {
     CLIPRequest { params: CLIPParams<'a> },
-    InstructorRequest { params: InstructorParams<'a> },
-    E5Request { params: E5Params<'a> },
+    InstructorRequest { params: InstructorParams },
+    E5Request { params: E5Params },
 }
 
 pub trait Embedder: Send + Sync {

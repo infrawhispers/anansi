@@ -28,6 +28,6 @@ pub struct IndexItems {
     pub ids: Vec<retrieval::ann::EId>,
     pub sub_indices: Vec<String>,
     pub embedds: Option<Vec<Vec<f32>>>,
-    pub to_embedd: Option<api::EncodeItem>,
+    pub to_embedd: Option<api::EncodeBatch>,
     // items: IndexItem,
 }

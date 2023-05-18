@@ -19,9 +19,9 @@ extern crate rmp_serde as rmps;
 
 #[derive(Debug)]
 pub struct IndexSearch<'a> {
-    pub embedding: &'a [f32],
+    pub embedding: Vec<f32>,
     pub attributes: &'a [&'a str],
-    pub weighting: HashMap<String, f32>,
+    pub weighting: &'a HashMap<String, f32>,
     pub limit: usize,
 }
 
@@ -51,7 +51,7 @@ pub struct JSONIndexManager {
     index_details: RwLock<HashMap<String, Arc<IndexDetails>>>,
     // within rocksdb we store the following:
     // b"{index_name}" -> b"{index_details}
-    rocksdb_instance: Arc<rocksdb::DB>,
+    rocksdb_instance: Arc<RwLock<rocksdb::DB>>,
 }
 
 #[derive(Debug)]
@@ -115,19 +115,26 @@ impl JSONIndexManager {
         options.create_missing_column_families(true);
         let cfs = rocksdb::DB::list_cf(&options, dir_path.clone()).unwrap_or(vec![]);
         let cf_missing = cfs.iter().find(|cf| cf == &cf_name).is_none();
-        let mut instance = rocksdb::DB::open_cf(&options, dir_path.clone(), cfs)?;
+        let mut rocksdb_instance = Arc::new(RwLock::new(rocksdb::DB::open_cf(
+            &options,
+            dir_path.clone(),
+            cfs,
+        )?));
 
         if cf_missing {
             // create a the column family if it is missing
             let options = rocksdb::Options::default();
-            instance.create_cf(cf_name, &options)?;
+            rocksdb_instance.write().create_cf(cf_name, &options)?;
         }
 
+        // let doc_store =
+        //     super::doc_store::DocStore::new(&dir_path, rocksdb_instance.clone(), "metadata_store")
+        //         .with_context(|| "failed to initalize the doc store")?;
         let obj = JSONIndexManager {
             cf_name: cf_name.to_string(),
             index_mgr: Arc::new(IndexManager::new(&indices_path)),
             index_details: RwLock::new(HashMap::new()),
-            rocksdb_instance: Arc::new(instance),
+            rocksdb_instance: rocksdb_instance,
         };
         let indices = obj.indices_fr_rocksdb()?;
         indices.iter().for_each(|(index, details)| {
@@ -157,19 +164,16 @@ impl JSONIndexManager {
     }
 
     fn delete_index_fr_rocksdb(&self, index_name: &str) -> anyhow::Result<()> {
-        let cf = self
-            .rocksdb_instance
-            .cf_handle(&self.cf_name)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "unable to fetch column family: {:?} was it created?",
-                    self.cf_name
-                )
-            })?;
+        let instance = self.rocksdb_instance.write();
+        let cf = instance.cf_handle(&self.cf_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unable to fetch column family: {:?} was it created?",
+                self.cf_name
+            )
+        })?;
         // let details_b = rmp_serde::to_vec(index_details)?;
         let index_name_full = format!("index::{}", index_name);
-        self.rocksdb_instance
-            .delete_cf(cf, index_name_full.as_bytes())?;
+        instance.delete_cf(cf, index_name_full.as_bytes())?;
         Ok(())
     }
     fn index_to_rocksdb(
@@ -178,37 +182,29 @@ impl JSONIndexManager {
         index_details: Vec<u8>,
         // index_details: &IndexDetails,
     ) -> anyhow::Result<()> {
-        let cf = self
-            .rocksdb_instance
-            .cf_handle(&self.cf_name)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "unable to fetch column family: {:?} was it created?",
-                    self.cf_name
-                )
-            })?;
+        let instance = self.rocksdb_instance.read();
+        let cf = instance.cf_handle(&self.cf_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unable to fetch column family: {:?} was it created?",
+                self.cf_name
+            )
+        })?;
         let index_name_full = format!("index::{}", index_name);
-        self.rocksdb_instance
-            .put_cf(cf, index_name_full.as_bytes(), index_details)?;
+        instance.put_cf(cf, index_name_full.as_bytes(), index_details)?;
         Ok(())
     }
     fn indices_fr_rocksdb(&self) -> anyhow::Result<HashMap<String, Arc<IndexDetails>>> {
         let mut res: HashMap<String, Arc<IndexDetails>> = HashMap::new();
-        let cf = self
-            .rocksdb_instance
-            .cf_handle(&self.cf_name)
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "unable to fetch column family: {:?} was it created?",
-                    self.cf_name
-                )
-            })?;
+        let instance = self.rocksdb_instance.read();
+        let cf = instance.cf_handle(&self.cf_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unable to fetch column family: {:?} was it created?",
+                self.cf_name
+            )
+        })?;
         let mut options = rocksdb::ReadOptions::default();
         options.set_iterate_range(rocksdb::PrefixRange("index::".as_bytes()));
-        for item in self
-            .rocksdb_instance
-            .iterator_cf_opt(cf, options, rocksdb::IteratorMode::Start)
-        {
+        for item in instance.iterator_cf_opt(cf, options, rocksdb::IteratorMode::Start) {
             let (key, value) = item?;
             let key_utf8 = std::str::from_utf8(&key)
                 .with_context(|| "failed to parse utf8 str from the key")?;
@@ -319,7 +315,7 @@ impl JSONIndexManager {
         for attribute in attributes.iter() {
             let fqn = sub_indices.get(attribute).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "unknown attribute: {attribute}, active attributes are: {active_attributes:?}"
+                    "unknown attribute: \"{attribute}\", active attributes are: {active_attributes:?}"
                 )
             })?;
             let nodes = self.index_mgr.search(
@@ -526,37 +522,37 @@ impl JSONIndexManager {
         items: &mut HashMap<String, crate::IndexItems>,
         settings: &IndexSettings,
     ) -> anyhow::Result<()> {
-        if items.contains_key(sub_index) {
-            let to_encode = items
-                .get_mut(sub_index)
-                .ok_or_else(|| anyhow::anyhow!("unable to fetch the releveant IndexItems"))?;
-            to_encode
-                .to_embedd
-                .as_mut()
-                .ok_or_else(|| anyhow::anyhow!("unexpectedly empty to_embedd obj"))?
-                .text
-                .push(content.to_string());
-            to_encode.ids.push(retrieval::ann::EId::from_str(id)?);
-            to_encode.sub_indices.push(sub_index.to_string());
-            return Ok(());
-        }
-        // everything uses the *same* model at the moment, we may need to be
-        // smarter if we offer clients the ability to mix and match
-        let to_encode = crate::IndexItems {
-            embedds: None,
-            to_embedd: Some(crate::api::EncodeItem {
-                model_name: settings.embedding_model_name.clone(),
-                model_class: settings.embedding_model_class.clone().into(),
-                text: vec![content.to_string()],
-                // these remain unused atm
-                image: Vec::new(),
-                image_uri: Vec::new(),
-                instructions: Vec::new(),
-            }),
-            ids: vec![retrieval::ann::EId::from_str(id)?],
-            sub_indices: vec![sub_index.to_string()],
-        };
-        items.insert(sub_index.to_string(), to_encode);
+        // if items.contains_key(sub_index) {
+        //     let to_encode = items
+        //         .get_mut(sub_index)
+        //         .ok_or_else(|| anyhow::anyhow!("unable to fetch the releveant IndexItems"))?;
+        //     to_encode
+        //         .to_embedd
+        //         .as_mut()
+        //         .ok_or_else(|| anyhow::anyhow!("unexpectedly empty to_embedd obj"))?
+        //         .text
+        //         .push(content.to_string());
+        //     to_encode.ids.push(retrieval::ann::EId::from_str(id)?);
+        //     to_encode.sub_indices.push(sub_index.to_string());
+        //     return Ok(());
+        // }
+        // // everything uses the *same* model at the moment, we may need to be
+        // // smarter if we offer clients the ability to mix and match
+        // let to_encode = crate::IndexItems {
+        //     embedds: None,
+        //     to_embedd: Some(crate::api::EncodeItem {
+        //         model_name: settings.embedding_model_name.clone(),
+        //         model_class: settings.embedding_model_class.clone().into(),
+        //         text: vec![content.to_string()],
+        //         // these remain unused atm
+        //         image: Vec::new(),
+        //         image_uri: Vec::new(),
+        //         instructions: Vec::new(),
+        //     }),
+        //     ids: vec![retrieval::ann::EId::from_str(id)?],
+        //     sub_indices: vec![sub_index.to_string()],
+        // };
+        // items.insert(sub_index.to_string(), to_encode);
         Ok(())
     }
 
@@ -621,6 +617,7 @@ impl JSONIndexManager {
         // TODO(infrawhispers) - we can optimize this by grouping the IndexItems
         // this creates a copy of existing embedding search requests
         let mut res: Vec<crate::IndexItems> = Vec::with_capacity(queries.len());
+        // let mut
         for q in queries.iter() {
             match &q.query {
                 Some(crate::api::search_query::Query::Embedding(e)) => {
@@ -631,34 +628,22 @@ impl JSONIndexManager {
                         to_embedd: None,
                     })
                 }
-                Some(crate::api::search_query::Query::Content(c)) => {
-                    let text;
-                    match &c.data {
-                        Some(crate::api::content::Data::Text(v)) => text = v,
-                        Some(crate::api::content::Data::Image(_))
-                        | Some(crate::api::content::Data::ImageUri(_)) => {
-                            bail!("{{image, image_uri}} are not currently supported")
-                        }
-                        None => {
-                            bail!(
-                                "one of {{text}} must be specified when providing content queries "
-                            )
-                        }
-                    }
-                    res.push(crate::IndexItems {
-                        ids: vec![retrieval::ann::EId::from_str(&c.id)?],
-                        sub_indices: Vec::new(),
-                        embedds: None,
-                        to_embedd: Some(crate::api::EncodeItem {
-                            model_name: index_settings.settings.embedding_model_name.clone(),
-                            model_class: index_settings.settings.embedding_model_class.into(),
-                            text: vec![text.to_string()],
-                            image: Vec::new(),
-                            image_uri: Vec::new(),
-                            instructions: Vec::new(),
-                        }),
-                    });
-                }
+                Some(crate::api::search_query::Query::Text(c)) => res.push(crate::IndexItems {
+                    ids: vec![retrieval::ann::EId::from_str(&c.id)?],
+                    sub_indices: Vec::new(),
+                    embedds: None,
+                    to_embedd: Some(crate::api::EncodeBatch {
+                        model_name: index_settings.settings.embedding_model_name.clone(),
+                        model_class: index_settings.settings.embedding_model_class.into(),
+                        content: Some(crate::api::encode_batch::Content::Text(
+                            crate::api::TextContent {
+                                data: vec![c.clone()],
+                            },
+                        )),
+                    }),
+                }),
+                &Some(crate::api::search_query::Query::ImageUri(_))
+                | &Some(crate::api::search_query::Query::ImageBytes(_)) => todo!(),
                 None => {
                     bail!("one of {{embedding, content}} must be set")
                 }
