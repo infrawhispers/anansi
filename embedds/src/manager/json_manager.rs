@@ -13,7 +13,7 @@ use tracing::{info, warn};
 
 use retrieval::manager::index_manager::IndexManager;
 use serde::{Deserialize, Serialize};
-use serde_json::{Result, Value};
+use serde_json::Value;
 
 extern crate rmp_serde as rmps;
 
@@ -61,7 +61,7 @@ struct CollectionMgr {
 
 impl CollectionMgr {
     fn init_sub_indices(&self) -> anyhow::Result<()> {
-        for (field_name, idx_name) in self.sub_index_by_name.write().iter() {
+        for (_, idx_name) in self.sub_index_by_name.write().iter() {
             self.index_mgr.new_index(
                 &idx_name,
                 &self.settings.index_type,
@@ -106,7 +106,7 @@ impl CollectionMgr {
             })?;
             let mut sub_idx = self.sub_index_by_name.write();
             let sub_idx_b = rmp_serde::to_vec(&*sub_idx)?;
-            instance.put_cf(cf, b"sub_index_by_name", sub_idx_b);
+            instance.put_cf(cf, b"sub_index_by_name", sub_idx_b)?;
             sub_idx.insert(field_name.to_string(), sub_index_name.to_string());
         }
         Ok(())
@@ -117,17 +117,12 @@ impl CollectionMgr {
             let field_name = &req.sub_indices[0];
             let mut must_create: bool = false;
             {
-                match self.sub_index_by_name.read().get(field_name) {
-                    None => {
-                        must_create = true;
-                    }
-                    Some(res) => {
-                        must_create = false;
-                    }
-                }
+                must_create = self.sub_index_by_name.read().get(field_name).is_none()
             }
             if must_create {
-                self.create_sub_index(field_name);
+                self.create_sub_index(field_name).with_context(|| {
+                    anyhow::anyhow!("unable to create the sub-index for: {field_name}")
+                })?;
             }
             let vals: Vec<f32> = req
                 .embedds
@@ -235,7 +230,7 @@ impl CollectionMgr {
                         .clone();
                 }
                 Err(err) => {
-                    bail!("unable to fetch: \"index_settings\"")
+                    bail!("unable to fetch: \"index_settings\": {err}")
                 }
             }
 
@@ -265,7 +260,7 @@ impl CollectionMgr {
                     // });
                 }
                 Err(err) => {
-                    bail!("unable to fetch: \"sub_index_by_name\"")
+                    bail!("unable to fetch: \"sub_index_by_name\": {err}")
                 }
             }
         }

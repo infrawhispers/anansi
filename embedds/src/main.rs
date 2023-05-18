@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread::available_parallelism;
@@ -415,7 +414,7 @@ impl ApiServerImpl {
                             to_embedd: None,
                         }),
                         Err(err) => {
-                            bail!("ran into trouble encoding")
+                            bail!("ran into trouble encoding: {err}")
                         }
                     }
                 }

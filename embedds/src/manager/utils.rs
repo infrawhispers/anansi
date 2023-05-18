@@ -112,7 +112,12 @@ mod tests {
         assert_eq!(
             &flat,
             json!({
-                "paragraphs.content": [""],
+                "title": "Population dynamics of head-direction neurons during drift and reorientation",
+                "paragraphs.content": [
+                    "In the version of this article initially published, there was a typographical error in the seventh sentence",
+                    "of the Methods “Surgeries” subsection, where in the text now reading",
+                    "where in the text now reading \"One week after injection, a 0.5-mm-diameter gradient refractive index (GRIN)",
+                ],
                 "paragraphs.section": ["CORRECTION", "CORRECTION", "CORRECTION"],
                 // "paragraphs.": "g"
             })
