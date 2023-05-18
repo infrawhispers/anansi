@@ -16,7 +16,7 @@ pub struct EmbedderParams<'a> {
 #[derive(Debug)]
 pub enum CLIPParams<'a> {
     Text { vals: Vec<String> },
-    Uri { vals: &'a [String] },
+    Uri { vals: Vec<String> },
     UriBytes { vals: &'a Vec<Vec<u8>> },
 }
 

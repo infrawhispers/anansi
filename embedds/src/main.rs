@@ -189,11 +189,35 @@ impl ApiServerImpl {
                             },
                         ))
                     }
-                    &embeddings::api::encode_batch::Content::Images(_)
-                    | &embeddings::api::encode_batch::Content::ImageUris(_) => {
+                    embeddings::api::encode_batch::Content::ImageUris(c) => {
+                        let mut image_uris: Vec<String> = Vec::with_capacity(c.data.len());
+                        for o in c.data.iter() {
+                            match &o.data {
+                                Some(embeddings::api::content::Data::Bytes(_)) | &None => {
+                                    return Err(Status::new(
+                                        Code::InvalidArgument,
+                                        format!("image_uris requires string values"),
+                                    ))
+                                }
+                                Some(embeddings::api::content::Data::Value(v)) => {
+                                    image_uris.push(v.to_string())
+                                }
+                            }
+                        }
+                        req.push((
+                            model_class.as_str_name(),
+                            &bundle.model_name,
+                            embedder::EmebeddingRequest::CLIPRequest {
+                                params: CLIPParams::Uri { vals: image_uris },
+                            },
+                        ))
+                    }
+                    &embeddings::api::encode_batch::Content::Images(_) => {
                         return Err(Status::new(
                             Code::InvalidArgument,
-                            format!("model_class: {model_class:?} only supports text encoding"),
+                            format!(
+                            "model_class: {model_class:?} only supports {{text, image_uri}} encoding"
+                        ),
                         ))
                     }
                 },
