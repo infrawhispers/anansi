@@ -522,37 +522,53 @@ impl JSONIndexManager {
         items: &mut HashMap<String, crate::IndexItems>,
         settings: &IndexSettings,
     ) -> anyhow::Result<()> {
-        // if items.contains_key(sub_index) {
-        //     let to_encode = items
-        //         .get_mut(sub_index)
-        //         .ok_or_else(|| anyhow::anyhow!("unable to fetch the releveant IndexItems"))?;
-        //     to_encode
-        //         .to_embedd
-        //         .as_mut()
-        //         .ok_or_else(|| anyhow::anyhow!("unexpectedly empty to_embedd obj"))?
-        //         .text
-        //         .push(content.to_string());
-        //     to_encode.ids.push(retrieval::ann::EId::from_str(id)?);
-        //     to_encode.sub_indices.push(sub_index.to_string());
-        //     return Ok(());
-        // }
-        // // everything uses the *same* model at the moment, we may need to be
-        // // smarter if we offer clients the ability to mix and match
-        // let to_encode = crate::IndexItems {
-        //     embedds: None,
-        //     to_embedd: Some(crate::api::EncodeItem {
-        //         model_name: settings.embedding_model_name.clone(),
-        //         model_class: settings.embedding_model_class.clone().into(),
-        //         text: vec![content.to_string()],
-        //         // these remain unused atm
-        //         image: Vec::new(),
-        //         image_uri: Vec::new(),
-        //         instructions: Vec::new(),
-        //     }),
-        //     ids: vec![retrieval::ann::EId::from_str(id)?],
-        //     sub_indices: vec![sub_index.to_string()],
-        // };
-        // items.insert(sub_index.to_string(), to_encode);
+        if items.contains_key(sub_index) {
+            let to_encode = items
+                .get_mut(sub_index)
+                .ok_or_else(|| anyhow::anyhow!("unable to fetch the releveant IndexItems"))?;
+            let batch = to_encode
+                .to_embedd
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("unable to fetch the releveant EncodeBatch"))?;
+            match batch.content {
+                Some(crate::api::encode_batch::Content::Text(ref mut o)) => {
+                    o.data.push(crate::api::Content {
+                        id: id.to_string(),
+                        data: Some(crate::api::content::Data::Value(content.to_string())),
+                        instruction: "".to_string(),
+                    });
+                }
+                Some(crate::api::encode_batch::Content::Images(_))
+                | Some(crate::api::encode_batch::Content::ImageUris(_))
+                | None => {
+                    bail!("programming error")
+                }
+            }
+            to_encode.ids.push(retrieval::ann::EId::from_str(id)?);
+            to_encode.sub_indices.push(sub_index.to_string());
+            return Ok(());
+        }
+        // everything uses the *same* model at the moment, we may need to be
+        // smarter if we offer clients the ability to mix and match
+        let to_encode = crate::IndexItems {
+            embedds: None,
+            to_embedd: Some(crate::api::EncodeBatch {
+                model_name: settings.embedding_model_name.clone(),
+                model_class: settings.embedding_model_class.clone().into(),
+                content: Some(crate::api::encode_batch::Content::Text(
+                    crate::api::TextContent {
+                        data: vec![crate::api::Content {
+                            id: id.to_string(),
+                            data: Some(crate::api::content::Data::Value(content.to_string())),
+                            instruction: "".to_string(),
+                        }],
+                    },
+                )),
+            }),
+            ids: vec![retrieval::ann::EId::from_str(id)?],
+            sub_indices: vec![sub_index.to_string()],
+        };
+        items.insert(sub_index.to_string(), to_encode);
         Ok(())
     }
 
