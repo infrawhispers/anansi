@@ -301,7 +301,7 @@ impl ApiServerImpl {
     ) -> anyhow::Result<embeddings::api::SearchIndexResponse> {
         let queries = self
             .index_mgr
-            .transform_search_req(&req.index_name, &req.queries)
+            .search_preprocess(&req.index_name, &req.queries)
             .with_context(|| "failed to transform the search req")?;
         if req.per_search_limit > 1024 {
             // this prevents us from massive allocations for a pool of available
@@ -389,7 +389,7 @@ impl ApiServerImpl {
     fn _index_data(&self, index_name: &str, data: &str) -> anyhow::Result<()> {
         let docs = self
             .index_mgr
-            .transform_index_data(index_name, data)
+            .insert_preprocess(index_name, data)
             .with_context(|| "failed to extract the documents from the supplied JSON")?;
         let mut doc_embedds: Vec<embeddings::IndexItems> = Vec::new();
         for item in docs {
@@ -424,7 +424,7 @@ impl ApiServerImpl {
             }
         }
         // finally run the insertion process:
-        self.index_mgr.insert(index_name, doc_embedds)
+        self.index_mgr.insert_data(index_name, doc_embedds)
     }
 }
 #[tonic::async_trait]

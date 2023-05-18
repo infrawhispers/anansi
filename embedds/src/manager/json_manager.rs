@@ -36,352 +36,98 @@ pub struct IndexSettings {
     pub embedding_model_class: crate::api::ModelClass,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct IndexDetails {
+struct CollectionMgrParams<'a> {
+    field_names: &'a [String],
+    index_settings: IndexSettings,
+}
+
+struct CollectionMgr {
+    name: String,
+    // this houses the actual ANN indices, which does the core insert
+    // serarch and filtering operations
+    index_mgr: Arc<IndexManager>,
+    // raw documents that have been submitted to this collection
+    // these are stored in rocksdb and allow for easy access at
+    // query time.
+    doc_store: Arc<crate::manager::doc_store::DocStore>,
     // settings that will be used to create a subsequent list of
     // indexing fields
     settings: IndexSettings,
-    // json field name -> actual index name
+    // json field_name -> actual index name
     sub_index_by_name: RwLock<HashMap<String, String>>,
-}
-
-pub struct JSONIndexManager {
-    index_mgr: Arc<IndexManager>,
-    cf_name: String,
-    index_details: RwLock<HashMap<String, Arc<IndexDetails>>>,
-    // within rocksdb we store the following:
-    // b"{index_name}" -> b"{index_details}
+    // we hold onto the rocksdb instance here
     rocksdb_instance: Arc<RwLock<rocksdb::DB>>,
 }
 
-#[derive(Debug)]
-struct Node<'a> {
-    ann_node: retrieval::ann::Node,
-    field: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-pub struct NodeHit {
-    pub id: String,
-    pub distance: f32,
-    pub document: Option<String>,
-}
-
-impl Ord for Node<'_> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self.ann_node.distance == other.ann_node.distance {
-            return std::cmp::Ordering::Equal;
+impl CollectionMgr {
+    fn init_sub_indices(&self) -> anyhow::Result<()> {
+        for (field_name, idx_name) in self.sub_index_by_name.write().iter() {
+            self.index_mgr.new_index(
+                &idx_name,
+                &self.settings.index_type,
+                &self.settings.metric_type,
+                &self.settings.index_params,
+            )?;
         }
-        if self.ann_node.distance < other.ann_node.distance {
-            return std::cmp::Ordering::Less;
-        }
-        std::cmp::Ordering::Greater
-    }
-}
-
-impl PartialOrd for Node<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for Node<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl Eq for Node<'_> {}
-
-impl JSONIndexManager {
-    pub fn new(directory: &Path) -> anyhow::Result<Self> {
-        let cf_name = "json_index_manager";
-        // create the directory if it does not exist
-        fs::create_dir_all(directory)?;
-        let mut dir_path = PathBuf::from(directory);
-        // create the IndicesMgr directory
-        let mut indices_path = dir_path.clone();
-        indices_path.push("indices");
-        fs::create_dir_all(&indices_path)?;
-
-        // create the JSONIndexMgr directory
-        dir_path.push("index_mgr");
-        fs::create_dir_all(&dir_path)?;
-
-        // finally open a rocksdb entry to the database
-        let mut options = rocksdb::Options::default();
-        options.set_error_if_exists(false);
-        options.create_if_missing(true);
-        options.create_missing_column_families(true);
-        let cfs = rocksdb::DB::list_cf(&options, dir_path.clone()).unwrap_or(vec![]);
-        let cf_missing = cfs.iter().find(|cf| cf == &cf_name).is_none();
-        let mut rocksdb_instance = Arc::new(RwLock::new(rocksdb::DB::open_cf(
-            &options,
-            dir_path.clone(),
-            cfs,
-        )?));
-
-        if cf_missing {
-            // create a the column family if it is missing
-            let options = rocksdb::Options::default();
-            rocksdb_instance.write().create_cf(cf_name, &options)?;
-        }
-
-        // let doc_store =
-        //     super::doc_store::DocStore::new(&dir_path, rocksdb_instance.clone(), "metadata_store")
-        //         .with_context(|| "failed to initalize the doc store")?;
-        let obj = JSONIndexManager {
-            cf_name: cf_name.to_string(),
-            index_mgr: Arc::new(IndexManager::new(&indices_path)),
-            index_details: RwLock::new(HashMap::new()),
-            rocksdb_instance: rocksdb_instance,
-        };
-        let indices = obj.indices_fr_rocksdb()?;
-        indices.iter().for_each(|(index, details)| {
-            info!("loading index: {index}");
-            details
-                .sub_index_by_name
-                .read()
-                .iter()
-                .for_each(|(field, fqn)| {
-                    match obj.index_mgr.new_index(
-                        fqn,
-                        &details.settings.index_type,
-                        &details.settings.metric_type,
-                        &details.settings.index_params,
-                    ) {
-                        Ok(()) => {
-                            info!("loaded sub_index: {fqn}")
-                        }
-                        Err(err) => {
-                            warn!("unable to load sub_index: {fqn} | err: {err}")
-                        }
-                    }
-                });
-        });
-        obj.index_details.write().extend(indices);
-        Ok(obj)
-    }
-
-    fn delete_index_fr_rocksdb(&self, index_name: &str) -> anyhow::Result<()> {
-        let instance = self.rocksdb_instance.write();
-        let cf = instance.cf_handle(&self.cf_name).ok_or_else(|| {
-            anyhow::anyhow!(
-                "unable to fetch column family: {:?} was it created?",
-                self.cf_name
-            )
-        })?;
-        // let details_b = rmp_serde::to_vec(index_details)?;
-        let index_name_full = format!("index::{}", index_name);
-        instance.delete_cf(cf, index_name_full.as_bytes())?;
         Ok(())
     }
-    fn index_to_rocksdb(
-        &self,
-        index_name: &str,
-        index_details: Vec<u8>,
-        // index_details: &IndexDetails,
-    ) -> anyhow::Result<()> {
-        let instance = self.rocksdb_instance.read();
-        let cf = instance.cf_handle(&self.cf_name).ok_or_else(|| {
-            anyhow::anyhow!(
-                "unable to fetch column family: {:?} was it created?",
-                self.cf_name
-            )
-        })?;
-        let index_name_full = format!("index::{}", index_name);
-        instance.put_cf(cf, index_name_full.as_bytes(), index_details)?;
-        Ok(())
-    }
-    fn indices_fr_rocksdb(&self) -> anyhow::Result<HashMap<String, Arc<IndexDetails>>> {
-        let mut res: HashMap<String, Arc<IndexDetails>> = HashMap::new();
-        let instance = self.rocksdb_instance.read();
-        let cf = instance.cf_handle(&self.cf_name).ok_or_else(|| {
-            anyhow::anyhow!(
-                "unable to fetch column family: {:?} was it created?",
-                self.cf_name
-            )
-        })?;
-        let mut options = rocksdb::ReadOptions::default();
-        options.set_iterate_range(rocksdb::PrefixRange("index::".as_bytes()));
-        for item in instance.iterator_cf_opt(cf, options, rocksdb::IteratorMode::Start) {
-            let (key, value) = item?;
-            let key_utf8 = std::str::from_utf8(&key)
-                .with_context(|| "failed to parse utf8 str from the key")?;
-
-            let key_parts: Vec<&str> = key_utf8.splitn(2, "::").collect();
-            if key_parts.len() != 2 {
-                warn!(
-                    "key: \"{:?}\" does not fit the expected format \"index::{{index_name}}\"",
-                    key_utf8
-                );
-                continue;
-            }
-            let index_name = key_parts[key_parts.len() - 1];
-            info!("index_name: {index_name}");
-            let key_settings: IndexDetails = rmp_serde::from_slice(&value)?;
-            res.insert(index_name.to_string(), Arc::new(key_settings));
-        }
-        info!("num ann-index metadata: {}", res.len());
-        Ok(res)
-    }
-
-    pub fn delete_index(&self, index_name: &str) -> anyhow::Result<()> {
+    fn create_sub_index(&self, field_name: &str) -> anyhow::Result<()> {
         {
-            let settings_r = self.index_details.read();
-            let settings;
-            match settings_r.get(index_name) {
-                Some(res) => settings = res,
-                None => {
-                    warn!(
-                        "delete requested for index: {}, which does not exist",
-                        index_name
-                    );
-                    return Ok(());
-                }
-            }
-            // we take out an exclusive lock on the index structure
-            // which blocks the writes on the sub-indices
-            let mut sub_indices = settings.sub_index_by_name.write();
-            let mut rm_success: Vec<String> = Vec::new();
-            let mut rm_errs: Vec<anyhow::Error> = Vec::new();
-            // since we are iterating through the items, we cannot update
-            // remove the items as we get them
-            for (field, sub_index_name) in sub_indices.iter() {
-                match self.index_mgr.delete_index(sub_index_name) {
-                    Ok(()) => {
-                        rm_success.push(sub_index_name.to_string());
-                        info!("succesfully removed - field: {field} sub_index: {sub_index_name}");
-                    }
-                    Err(err) => {
-                        rm_errs.push(err);
-                    }
-                }
-            }
-            // remove everything that we have from the in-memory index
-            // to sub-index mapper
-            rm_success.iter().for_each(|sub_index_name| {
-                sub_indices.remove(sub_index_name);
-            });
-            if rm_errs.len() != 0 {
-                return Err(anyhow::anyhow!("first err returned: {}", rm_errs[0]));
+            // check if the sub-index already exists!
+            let sub_indices = self.sub_index_by_name.read();
+            if sub_indices.contains_key(field_name) {
+                bail!(
+                    "collection: {}, sub_index: {} already exists ",
+                    self.name,
+                    field_name
+                )
             }
         }
-        // finally remove the metadata and clear everything out
-        self.delete_index_fr_rocksdb(index_name)
-            .with_context(|| format!("unable to remove metadata for index: {index_name}"))?;
-        let mut settings_w = self.index_details.write();
-        settings_w.remove(index_name);
-        Ok(())
-    }
-
-    pub fn search(&self, index_name: &str, req: &IndexSearch) -> anyhow::Result<Vec<NodeHit>> {
-        let index = self.index_details.read();
-        let details = index
-            .get(index_name)
-            .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
-        // default to all ANN sub-indices that we have created
-        let sub_indices = details.sub_index_by_name.read();
-        let active_attributes: Vec<String> = sub_indices
-            .keys()
-            .map(|k| k.clone())
-            .collect::<Vec<String>>();
-        let mut attributes: Vec<String> = active_attributes.clone();
-        if req.attributes.len() != 0 {
-            attributes.clear();
-            attributes.extend(
-                req.attributes
-                    .iter()
-                    .map(|x| (*x).to_string())
-                    .collect::<Vec<String>>(),
-            ); //eq.attributes
-        }
-        // generate the boost_vals - this is necessary in order to do
-        // any boosting
-        let re_rank = req.weighting.len() > 0;
-        let mut boost_vals: HashMap<String, f32> = HashMap::new();
-        let mut boost_denom: f32 = 0.0;
-        if re_rank {
-            req.weighting.values().for_each(|w| boost_denom += w);
-            req.weighting.iter().for_each(|(attr, boost)| {
-                boost_vals.insert(attr.to_string(), 1.0 - (boost / boost_denom));
-            });
-        }
-
-        // walk through all the attributes and generate the nodes
-        // that we care about
-        let mut max_distance: f32 = f32::MIN;
-        let mut all_nodes: Vec<Node> = Vec::new();
-        for attribute in attributes.iter() {
-            let fqn = sub_indices.get(attribute).ok_or_else(|| {
+        // sub-index does not exist, so we need to go and create everything
+        let sub_index_name = format!("{}.{}", self.name, field_name);
+        self.index_mgr.new_index(
+            &sub_index_name,
+            &self.settings.index_type,
+            &self.settings.metric_type,
+            &self.settings.index_params,
+        )?;
+        info!(
+            "collection: {}, created sub_index: {}",
+            self.name, field_name,
+        );
+        // write out the sub_index details to rocksdb and update our in-memory listings
+        {
+            let instance = self.rocksdb_instance.read();
+            let cf = instance.cf_handle(&self.name).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "unknown attribute: \"{attribute}\", active attributes are: {active_attributes:?}"
+                    "unable to fetch column family: {} was it created?",
+                    self.name
                 )
             })?;
-            let nodes = self.index_mgr.search(
-                fqn,
-                retrieval::ann::Points::Values {
-                    vals: &req.embedding,
-                },
-                req.limit,
-            )?;
-            let tagged_nodes: Vec<Node> = nodes
-                .into_iter()
-                .map(|x| {
-                    if x.distance > max_distance {
-                        max_distance = x.distance
-                    }
-                    Node {
-                        ann_node: x,
-                        field: &attribute,
-                    }
-                })
-                .collect();
-            all_nodes.extend(tagged_nodes);
+            let mut sub_idx = self.sub_index_by_name.write();
+            let sub_idx_b = rmp_serde::to_vec(&*sub_idx)?;
+            instance.put_cf(cf, b"sub_index_by_name", sub_idx_b);
+            sub_idx.insert(field_name.to_string(), sub_index_name.to_string());
         }
-        // normalize by all the distances
-
-        if re_rank {
-            all_nodes.iter_mut().for_each(|x| {
-                let boost = boost_vals.get(x.field).unwrap_or(&1.0);
-                x.ann_node.distance = (x.ann_node.distance / max_distance) * boost;
-            });
-        }
-        // sort all the nodes
-        all_nodes.sort();
-        // then take the best k
-        Ok(all_nodes
-            .into_iter()
-            .take(req.limit)
-            .map(|nn| NodeHit {
-                id: nn.ann_node.eid.to_string(),
-                distance: nn.ann_node.distance,
-                document: None,
-            })
-            .collect::<Vec<NodeHit>>())
-        // info!("all_nodes: {:?}", all_nodes);
-        // Ok(())
+        Ok(())
     }
-    pub fn insert(&self, index_name: &str, data: Vec<crate::IndexItems>) -> anyhow::Result<()> {
+
+    fn insert_data(&self, data: Vec<crate::IndexItems>) -> anyhow::Result<()> {
         for req in data.iter() {
-            let sub_index_name = &req.sub_indices[0];
+            let field_name = &req.sub_indices[0];
             let mut must_create: bool = false;
             {
-                let details = self.index_details.read();
-                match details.get(index_name) {
+                match self.sub_index_by_name.read().get(field_name) {
                     None => {
-                        bail!("unknown index: {index_name}, was it previously created?")
+                        must_create = true;
                     }
                     Some(res) => {
-                        let index_details = res.sub_index_by_name.read();
-                        if !index_details.contains_key(sub_index_name) {
-                            must_create = true;
-                        }
+                        must_create = false;
                     }
                 }
             }
             if must_create {
-                self.create_sub_index(index_name, sub_index_name);
+                self.create_sub_index(field_name);
             }
             let vals: Vec<f32> = req
                 .embedds
@@ -394,7 +140,7 @@ impl JSONIndexManager {
                 .flatten()
                 .collect();
             self.index_mgr.insert(
-                format!("{}.{}", index_name, req.sub_indices[0]),
+                format!("{}.{}", self.name, field_name),
                 &req.ids,
                 retrieval::ann::Points::Values { vals: &vals },
             )?;
@@ -402,87 +148,158 @@ impl JSONIndexManager {
         Ok(())
     }
 
-    fn create_sub_index(&self, index_name: &str, field_name: &str) -> anyhow::Result<()> {
-        let details_r = self.index_details.read();
-        let index_details = details_r.get(index_name).ok_or_else(|| {
+    fn delete(&self) -> anyhow::Result<()> {
+        let mut sub_indices = self.sub_index_by_name.write();
+        let mut rm_success: Vec<String> = Vec::new();
+        let mut rm_errs: Vec<anyhow::Error> = Vec::new();
+        // since we are iterating through the items, we cannot update
+        // remove the items as we get them
+        for (field, index_name) in sub_indices.iter() {
+            match self.index_mgr.delete_index(index_name) {
+                Ok(()) => {
+                    rm_success.push(index_name.to_string());
+                    info!("succesfully removed - field: {field} sub_index: {index_name}");
+                }
+                Err(err) => {
+                    rm_errs.push(err);
+                }
+            }
+        }
+        // remove everything that we have from the in-memory index
+        // to sub-index mapper
+        rm_success.iter().for_each(|sub_index_name| {
+            sub_indices.remove(sub_index_name);
+        });
+        if rm_errs.len() != 0 {
+            return Err(anyhow::anyhow!("first err returned: {}", rm_errs[0]));
+        }
+        // blow away the stuff existing in rocksdb
+        let instance = self.rocksdb_instance.write();
+        let cf = instance.cf_handle(&self.name).ok_or_else(|| {
             anyhow::anyhow!(
-                "index: \"{:?}\" was not previously created - this is a programming error!",
-                index_name
+                "unable to fetch column family: {:?} was it created?",
+                self.name
             )
         })?;
-        {
-            // check if the sub-index already exists!
-            let sub_index = index_details.sub_index_by_name.read();
-            if sub_index.contains_key(field_name) {
-                bail!(
-                    "sub_index: {:?} for index: {:?} already exists",
-                    field_name,
-                    index_name
-                )
-            }
-        }
-        // sub-index does not exist, so we need to go and create everything
-        let sub_index_name = format!("{}.{}", index_name, field_name);
-        self.index_mgr.new_index(
-            &sub_index_name,
-            &index_details.settings.index_type,
-            &index_details.settings.metric_type,
-            &index_details.settings.index_params,
-        )?;
-        info!("created sub_index: {sub_index_name} within index: {index_name}");
-        // finally add our sub-index to the list of indexes that we care about
-        {
-            let mut sub_index = index_details.sub_index_by_name.write();
-            sub_index.insert(field_name.to_string(), sub_index_name.to_string());
-        }
-        let details_b = rmp_serde::to_vec(index_details)?;
-        // optimistically put it into rocksdb
-        match self.index_to_rocksdb(index_name, details_b) {
-            Ok(()) => {}
-            Err(err) => {
-                info!("got an error while trying to put it into rocksdb: {err}");
-                // sub_index.remove(field_name);
-                return Err(err);
-            }
-        }
-
+        instance.delete_cf(cf, self.name.as_bytes())?;
         Ok(())
     }
 
-    pub fn create_index(
-        &self,
-        index_name: &str,
-        field_names: &[String],
-        settings: &IndexSettings,
-    ) -> anyhow::Result<()> {
+    fn new(
+        name: &str,
+        // fields map 1:1 with the sub-indices that we create
+        dir_path: &PathBuf,
+        // rocksdb_instance that will be used for this given collection
+        rocksdb_instance: Arc<RwLock<rocksdb::DB>>,
+        // actual collection of indices that are used by the database
+        index_mgr: Arc<IndexManager>,
+        init_params: Option<CollectionMgrParams>,
+    ) -> anyhow::Result<Self> {
+        info!("cf_name: {name} ");
+        let cf_name = name;
+        // do any initialization for the columnfamily for this collection
+        let mut options = rocksdb::Options::default();
+        options.set_error_if_exists(false);
+        options.create_if_missing(true);
+        options.create_missing_column_families(true);
+        let cfs = rocksdb::DB::list_cf(&options, dir_path.clone()).unwrap_or(vec![]);
+        let cf_missing = cfs.iter().find(|cf| cf == &cf_name).is_none();
+        if cf_missing {
+            // create the column family if it is missing
+            let options = rocksdb::Options::default();
+            rocksdb_instance.write().create_cf(cf_name, &options)?;
+        }
+
+        let settings: IndexSettings;
+        let sub_index_by_name: RwLock<HashMap<String, String>>;
+        let is_init = init_params.is_some();
         {
-            let indices = self.index_details.read();
-            if indices.contains_key(index_name) {
-                bail!("index: {index_name} already exists",);
+            let instance = rocksdb_instance.read();
+            let cf = instance.cf_handle(name).ok_or_else(|| {
+                anyhow::anyhow!("unable to fetch column family: {name} was it created?",)
+            })?;
+
+            match instance.get_cf(cf, "index_settings".as_bytes()) {
+                Ok(Some(val)) => {
+                    settings = rmp_serde::from_slice(&val)?;
+                }
+                Ok(None) => {
+                    settings = init_params
+                        .as_ref()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "unexpectedly missing \"index_settings\" for collection: {name}",
+                            )
+                        })?
+                        .index_settings
+                        .clone();
+                }
+                Err(err) => {
+                    bail!("unable to fetch: \"index_settings\"")
+                }
+            }
+
+            match instance.get_cf(cf, "sub_index_by_name".as_bytes()) {
+                Ok(Some(val)) => {
+                    sub_index_by_name = rmp_serde::from_slice(&val)?;
+                }
+                Ok(None) => {
+                    // let field_names =
+                    sub_index_by_name = RwLock::new(HashMap::new());
+                    for field_name in init_params
+                        .as_ref()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "unexpectedly missing \"sub_index_by_name\" for collection: {name}",
+                            )
+                        })?
+                        .field_names
+                        .iter()
+                    {
+                        sub_index_by_name
+                            .write()
+                            .insert(field_name.to_string(), format!("{name}.{field_name}"));
+                    }
+                    // .for_each(|n| {
+
+                    // });
+                }
+                Err(err) => {
+                    bail!("unable to fetch: \"sub_index_by_name\"")
+                }
             }
         }
-        let details = IndexDetails {
-            settings: settings.clone(),
-            sub_index_by_name: HashMap::new().into(),
+
+        if is_init {
+            // write out the empty values that we have atm
+            let instance = rocksdb_instance.write();
+            let mut batch = rocksdb::WriteBatch::default();
+            let cf = instance.cf_handle(name).ok_or_else(|| {
+                anyhow::anyhow!("unable to fetch column family: {name} was it created?",)
+            })?;
+            let sub_idx_b = rmp_serde::to_vec(&*sub_index_by_name.read())?;
+            let index_settings_b = rmp_serde::to_vec(&settings)?;
+
+            batch.put_cf(cf, b"sub_index_by_name", sub_idx_b);
+            batch.put_cf(cf, b"index_settings", index_settings_b);
+            instance.write(batch)?;
+        }
+
+        let obj = CollectionMgr {
+            name: name.to_string(),
+            doc_store: Arc::new(super::doc_store::DocStore::new(
+                &dir_path,
+                rocksdb_instance.clone(),
+                cf_name,
+            )?),
+            index_mgr: index_mgr,
+            settings: settings,
+            sub_index_by_name: RwLock::new(HashMap::new()),
+            rocksdb_instance: rocksdb_instance.clone(),
         };
-        let details_b = rmp_serde::to_vec(&details)?;
+        obj.init_sub_indices()?;
 
-        {
-            // stick it in persistent storage
-            self.index_to_rocksdb(index_name, details_b)?;
-            // stick it in the in-memory location that we read from
-            let mut settings_w = self.index_details.write();
-            settings_w.insert(index_name.to_string(), Arc::new(details));
-        }
-        // now create the sub-indices that we care about
-        for field_name in field_names.iter() {
-            self.create_sub_index(index_name, field_name)?;
-        }
-        Ok(())
-    }
-
-    fn index(&self, index_name: &str, data: serde_json::Value) -> anyhow::Result<()> {
-        Ok(())
+        Ok(obj)
     }
 
     fn get_obj_id(&self, obj: &Value) -> anyhow::Result<String> {
@@ -577,10 +394,8 @@ impl JSONIndexManager {
     /// data to be embedded or the pre-computed embeddings
     fn docs_to_embedd_req(
         &self,
-        settings: &IndexSettings,
         map: &HashMap<String, serde_json::Map<String, Value>>,
     ) -> anyhow::Result<Vec<crate::IndexItems>> {
-        // let mut res: Vec<crate::IndexItems> = Vec::new();
         let mut items: HashMap<String, crate::IndexItems> = HashMap::new();
         for (doc_id, mappings) in map.iter() {
             for (k, v) in mappings {
@@ -593,7 +408,7 @@ impl JSONIndexManager {
                     let val = v.as_str().ok_or_else(|| {
                         anyhow::anyhow!("unable to convert to str | k: {k} v: {v} doc_id: {doc_id}")
                     })?;
-                    self.add_to_sub_indices_items(doc_id, val, k, &mut items, settings)?;
+                    self.add_to_sub_indices_items(doc_id, val, k, &mut items, &self.settings)?;
                 } else if v.is_array() {
                     let arr = v.as_array().ok_or_else(|| {
                         anyhow::anyhow!("unable to convert to arr | k: {k}, v: {v}")
@@ -605,7 +420,7 @@ impl JSONIndexManager {
                                 &arr_item.to_string(),
                                 k,
                                 &mut items,
-                                settings,
+                                &self.settings,
                             )?;
                         }
                     }
@@ -616,73 +431,7 @@ impl JSONIndexManager {
         Ok(res)
     }
 
-    pub fn transform_search_req(
-        &self,
-        index_name: &str,
-        queries: &[crate::api::SearchQuery],
-    ) -> anyhow::Result<Vec<crate::IndexItems>> {
-        // fetch the index as that contains the embedding details
-        let details = self.index_details.read();
-        let index_settings;
-        match details.get(index_name) {
-            Some(res) => index_settings = res,
-            None => {
-                bail!("index: {index_name} does not exist");
-            }
-        }
-        // TODO(infrawhispers) - we can optimize this by grouping the IndexItems
-        // this creates a copy of existing embedding search requests
-        let mut res: Vec<crate::IndexItems> = Vec::with_capacity(queries.len());
-        // let mut
-        for q in queries.iter() {
-            match &q.query {
-                Some(crate::api::search_query::Query::Embedding(e)) => {
-                    res.push(crate::IndexItems {
-                        ids: vec![retrieval::ann::EId::from_str(&e.id)?],
-                        sub_indices: Vec::new(),
-                        embedds: Some(vec![e.vals.clone()]),
-                        to_embedd: None,
-                    })
-                }
-                Some(crate::api::search_query::Query::Text(c)) => res.push(crate::IndexItems {
-                    ids: vec![retrieval::ann::EId::from_str(&c.id)?],
-                    sub_indices: Vec::new(),
-                    embedds: None,
-                    to_embedd: Some(crate::api::EncodeBatch {
-                        model_name: index_settings.settings.embedding_model_name.clone(),
-                        model_class: index_settings.settings.embedding_model_class.into(),
-                        content: Some(crate::api::encode_batch::Content::Text(
-                            crate::api::TextContent {
-                                data: vec![c.clone()],
-                            },
-                        )),
-                    }),
-                }),
-                &Some(crate::api::search_query::Query::ImageUri(_))
-                | &Some(crate::api::search_query::Query::ImageBytes(_)) => todo!(),
-                None => {
-                    bail!("one of {{embedding, content}} must be set")
-                }
-            }
-        }
-        Ok(res)
-    }
-
-    pub fn transform_index_data(
-        &self,
-        index_name: &str,
-        data: &str,
-    ) -> anyhow::Result<Vec<crate::IndexItems>> {
-        // we need the index to exist in order to select the type of
-        // Model to attach to the embedding request
-        let details = self.index_details.read();
-        let index_settings;
-        match details.get(index_name) {
-            Some(res) => index_settings = res,
-            None => {
-                bail!("index: {index_name} does not exist");
-            }
-        }
+    fn insert_preprocess(&self, data: &str) -> anyhow::Result<Vec<crate::IndexItems>> {
         let mut res: HashMap<String, serde_json::Map<String, Value>> = HashMap::new();
         let obj: Value = serde_json::Value::from_str(data)
             .with_context(|| "unable to parse supplied JSON, must be one of: [obj, arr]")?;
@@ -711,10 +460,381 @@ impl JSONIndexManager {
         } else {
             bail!("unable to split supplied JSON, must be one of: [obj, arr]");
         }
-        let req = self.docs_to_embedd_req(&index_settings.settings, &res)?;
-        Ok(req)
+        self.docs_to_embedd_req(&res)
+    }
+
+    fn search_preprocess(
+        &self,
+        queries: &[crate::api::SearchQuery],
+    ) -> anyhow::Result<Vec<crate::IndexItems>> {
+        // TODO(infrawhispers) - we can optimize this by grouping the IndexItems
+        // this creates a copy of existing embedding search requests
+        let mut res: Vec<crate::IndexItems> = Vec::with_capacity(queries.len());
+        for q in queries.iter() {
+            match &q.query {
+                Some(crate::api::search_query::Query::Embedding(e)) => {
+                    res.push(crate::IndexItems {
+                        ids: vec![retrieval::ann::EId::from_str(&e.id)?],
+                        sub_indices: Vec::new(),
+                        embedds: Some(vec![e.vals.clone()]),
+                        to_embedd: None,
+                    })
+                }
+                Some(crate::api::search_query::Query::Text(c)) => res.push(crate::IndexItems {
+                    ids: vec![retrieval::ann::EId::from_str(&c.id)?],
+                    sub_indices: Vec::new(),
+                    embedds: None,
+                    to_embedd: Some(crate::api::EncodeBatch {
+                        model_name: self.settings.embedding_model_name.clone(),
+                        model_class: self.settings.embedding_model_class.into(),
+                        content: Some(crate::api::encode_batch::Content::Text(
+                            crate::api::TextContent {
+                                data: vec![c.clone()],
+                            },
+                        )),
+                    }),
+                }),
+                &Some(crate::api::search_query::Query::ImageUri(_))
+                | &Some(crate::api::search_query::Query::ImageBytes(_)) => todo!(),
+                None => {
+                    bail!("one of [embedding, content] must be set")
+                }
+            }
+        }
+        Ok(res)
+    }
+
+    fn search(&self, req: &IndexSearch) -> anyhow::Result<Vec<NodeHit>> {
+        let sub_indices = self.sub_index_by_name.read();
+        let active_attributes: Vec<String> = sub_indices
+            .keys()
+            .map(|k| k.clone())
+            .collect::<Vec<String>>();
+        let mut attributes: Vec<String> = active_attributes.clone();
+        if req.attributes.len() != 0 {
+            attributes.clear();
+            attributes.extend(
+                req.attributes
+                    .iter()
+                    .map(|x| (*x).to_string())
+                    .collect::<Vec<String>>(),
+            ); //eq.attributes
+        }
+        // generate the boost_vals - this is necessary in order to do
+        // any boosting
+        let re_rank = req.weighting.len() > 0;
+        let mut boost_vals: HashMap<String, f32> = HashMap::new();
+        let mut boost_denom: f32 = 0.0;
+        if re_rank {
+            req.weighting.values().for_each(|w| boost_denom += w);
+            req.weighting.iter().for_each(|(attr, boost)| {
+                boost_vals.insert(attr.to_string(), 1.0 - (boost / boost_denom));
+            });
+        }
+
+        // walk through all the attributes and generate the nodes
+        // that we care about
+        let mut max_distance: f32 = f32::MIN;
+        let mut all_nodes: Vec<Node> = Vec::new();
+        for attribute in attributes.iter() {
+            let fqn = sub_indices.get(attribute).ok_or_else(|| {
+                anyhow::anyhow!(
+                "unknown attribute: \"{attribute}\", active attributes are: {active_attributes:?}"
+            )
+            })?;
+            let nodes = self.index_mgr.search(
+                fqn,
+                retrieval::ann::Points::Values {
+                    vals: &req.embedding,
+                },
+                req.limit,
+            )?;
+            let tagged_nodes: Vec<Node> = nodes
+                .into_iter()
+                .map(|x| {
+                    if x.distance > max_distance {
+                        max_distance = x.distance
+                    }
+                    Node {
+                        ann_node: x,
+                        field: &attribute,
+                    }
+                })
+                .collect();
+            all_nodes.extend(tagged_nodes);
+        }
+        // normalize by all the distances
+
+        if re_rank {
+            all_nodes.iter_mut().for_each(|x| {
+                let boost = boost_vals.get(x.field).unwrap_or(&1.0);
+                x.ann_node.distance = (x.ann_node.distance / max_distance) * boost;
+            });
+        }
+        // sort all the nodes then take the best k
+        all_nodes.sort();
+        Ok(all_nodes
+            .into_iter()
+            .take(req.limit)
+            .map(|nn| NodeHit {
+                id: nn.ann_node.eid.to_string(),
+                distance: nn.ann_node.distance,
+                document: None,
+            })
+            .collect::<Vec<NodeHit>>())
     }
 }
+
+pub struct JSONIndexManager {
+    index_mgr: Arc<IndexManager>,
+    cf_name: String,
+    dir_path: PathBuf,
+    index_details: RwLock<HashMap<String, Arc<CollectionMgr>>>,
+    // within rocksdb we store the following:
+    // b"{index_name}" -> b"{index_details}
+    rocksdb_instance: Arc<RwLock<rocksdb::DB>>,
+}
+
+#[derive(Debug)]
+struct Node<'a> {
+    ann_node: retrieval::ann::Node,
+    field: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NodeHit {
+    pub id: String,
+    pub distance: f32,
+    pub document: Option<String>,
+}
+
+impl Ord for Node<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.ann_node.distance == other.ann_node.distance {
+            return std::cmp::Ordering::Equal;
+        }
+        if self.ann_node.distance < other.ann_node.distance {
+            return std::cmp::Ordering::Less;
+        }
+        std::cmp::Ordering::Greater
+    }
+}
+
+impl PartialOrd for Node<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Node<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Node<'_> {}
+
+impl JSONIndexManager {
+    pub fn new(directory: &Path) -> anyhow::Result<Self> {
+        let cf_name = "json_index_manager";
+        // create the directory if it does not exist
+        fs::create_dir_all(directory)?;
+        let mut dir_path = PathBuf::from(directory);
+        // create the IndicesMgr directory
+        let mut indices_path = dir_path.clone();
+        indices_path.push("indices");
+        fs::create_dir_all(&indices_path)?;
+
+        // create the JSONIndexMgr directory
+        dir_path.push("index_mgr");
+        fs::create_dir_all(&dir_path)?;
+
+        // finally open a rocksdb entry to the database
+        let mut options = rocksdb::Options::default();
+        options.set_error_if_exists(false);
+        options.create_if_missing(true);
+        options.create_missing_column_families(true);
+        let cfs = rocksdb::DB::list_cf(&options, dir_path.clone()).unwrap_or(vec![]);
+        let cf_missing = cfs.iter().find(|cf| cf == &cf_name).is_none();
+        let rocksdb_instance = Arc::new(RwLock::new(rocksdb::DB::open_cf(
+            &options,
+            dir_path.clone(),
+            cfs,
+        )?));
+
+        if cf_missing {
+            // create a the column family if it is missing
+            let options = rocksdb::Options::default();
+            rocksdb_instance.write().create_cf(cf_name, &options)?;
+        }
+        let index_mgr = Arc::new(IndexManager::new(&indices_path));
+
+        let obj = JSONIndexManager {
+            cf_name: cf_name.to_string(),
+            dir_path: dir_path,
+            index_mgr: index_mgr,
+            index_details: RwLock::new(HashMap::new()),
+            rocksdb_instance: rocksdb_instance,
+        };
+        let indices = obj.mgrs_fr_rocksdb()?;
+        obj.index_details.write().extend(indices);
+        Ok(obj)
+    }
+
+    fn get_collections(&self) -> anyhow::Result<Vec<String>> {
+        let instance = self.rocksdb_instance.read();
+        let cf = instance.cf_handle(&self.cf_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unable to fetch column family: {:?} was it created?",
+                self.cf_name
+            )
+        })?;
+        let mut collections: Vec<String> = Vec::new();
+        let mut options = rocksdb::ReadOptions::default();
+        options.set_iterate_range(rocksdb::PrefixRange("collection::".as_bytes()));
+        for item in instance.iterator_cf_opt(cf, options, rocksdb::IteratorMode::Start) {
+            let (key, val) = item?;
+            let key_utf8 = std::str::from_utf8(&key)
+                .with_context(|| "failed to parse utf8 str from the key")?;
+            let val_utf8 = std::str::from_utf8(&val)
+                .with_context(|| "failed to parse utf8 str from the col")?;
+            let key_parts: Vec<&str> = key_utf8.splitn(2, "::").collect();
+            if key_parts.len() != 2 {
+                warn!(
+                    "key: \"{:?}\" does not fit the expected format \"index::{{index_name}}\"",
+                    key_utf8
+                );
+                continue;
+            }
+            collections.push(val_utf8.to_string());
+        }
+        Ok(collections)
+    }
+
+    fn mgrs_fr_rocksdb(&self) -> anyhow::Result<HashMap<String, Arc<CollectionMgr>>> {
+        let mut res: HashMap<String, Arc<CollectionMgr>> = HashMap::new();
+        let collections = self.get_collections()?;
+        for collection in collections.iter() {
+            info!("initating collection: {collection}");
+            let obj = CollectionMgr::new(
+                collection,
+                &self.dir_path,
+                self.rocksdb_instance.clone(),
+                self.index_mgr.clone(),
+                None,
+            )?;
+            res.insert(collection.to_string(), Arc::new(obj));
+        }
+        Ok(res)
+    }
+
+    pub fn search_preprocess(
+        &self,
+        index_name: &str,
+        queries: &[crate::api::SearchQuery],
+    ) -> anyhow::Result<Vec<crate::IndexItems>> {
+        let mgrs = self.index_details.read();
+        let mgr = mgrs
+            .get(index_name)
+            .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
+        mgr.search_preprocess(queries)
+    }
+
+    pub fn search(&self, index_name: &str, req: &IndexSearch) -> anyhow::Result<Vec<NodeHit>> {
+        let mgrs = self.index_details.read();
+        let mgr = mgrs
+            .get(index_name)
+            .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
+        mgr.search(req)
+    }
+
+    pub fn insert_preprocess(
+        &self,
+        index_name: &str,
+        data: &str,
+    ) -> anyhow::Result<Vec<crate::IndexItems>> {
+        let mgrs = self.index_details.read();
+        let mgr = mgrs
+            .get(index_name)
+            .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
+        mgr.insert_preprocess(data)
+    }
+
+    pub fn insert_data(
+        &self,
+        index_name: &str,
+        data: Vec<crate::IndexItems>,
+    ) -> anyhow::Result<()> {
+        let mgrs = self.index_details.read();
+        let mgr = mgrs
+            .get(index_name)
+            .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
+        mgr.insert_data(data)
+    }
+
+    pub fn delete_index(&self, index_name: &str) -> anyhow::Result<()> {
+        {
+            let indices = self.index_details.read();
+            let mgr;
+            match indices.get(index_name) {
+                Some(res) => mgr = res,
+                None => return Ok(()),
+            }
+            mgr.delete()?;
+        }
+        let instance = self.rocksdb_instance.read();
+        let cf = instance.cf_handle(&self.cf_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unable to fetch column family: {:?} was it created?",
+                self.cf_name
+            )
+        })?;
+        instance.delete_cf(cf, "collection::{index_name}")?;
+        self.index_details.write().remove(index_name);
+        Ok(())
+    }
+
+    pub fn create_index(
+        &self,
+        index_name: &str,
+        field_names: &[String],
+        settings: &IndexSettings,
+    ) -> anyhow::Result<()> {
+        {
+            let indices = self.index_details.read();
+            if indices.contains_key(index_name) {
+                bail!("index: {index_name} already exists",);
+            }
+        }
+        // create a new manager for the given collection that
+        // we are working with
+        let mgr = CollectionMgr::new(
+            index_name,
+            &self.dir_path,
+            self.rocksdb_instance.clone(),
+            self.index_mgr.clone(),
+            Some(CollectionMgrParams {
+                field_names: field_names,
+                index_settings: settings.clone(),
+            }),
+        )?;
+
+        let instance = self.rocksdb_instance.read();
+        let cf = instance.cf_handle(&self.cf_name).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unable to fetch column family: {:?} was it created?",
+                self.cf_name
+            )
+        })?;
+        instance.put_cf(cf, "collection::{index_name}", format!("{index_name}"))?;
+        self.index_details
+            .write()
+            .insert(index_name.to_string(), Arc::new(mgr));
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -759,12 +879,12 @@ mod tests {
                 to_embedd: None,
             },
         ];
-        mgr.insert("test-0000", index_req)
+        mgr.insert_data("test-0000", index_req)
             .expect("insertion should work");
         let search_req = IndexSearch {
             embedding: vec![2.0; 768],
-            attributes: vec!["paragraph".to_string(), "title".to_string()],
-            weighting: HashMap::from([
+            attributes: &vec!["paragraph", "title"],
+            weighting: &HashMap::from([
                 ("paragraph".to_string(), 4 as f32),
                 ("title".to_string(), 1 as f32),
             ]),
@@ -792,8 +912,8 @@ mod tests {
 
         let search_req_bad = IndexSearch {
             embedding: vec![2.0; 768],
-            attributes: vec!["non-existent".to_string()],
-            weighting: HashMap::new(),
+            attributes: &vec!["non-existent"],
+            weighting: &HashMap::new(),
             limit: 10,
         };
         assert!(mgr.search("test-0000", &search_req_bad).is_err());

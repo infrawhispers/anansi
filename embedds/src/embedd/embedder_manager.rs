@@ -248,7 +248,7 @@ mod tests {
             "passage: Definition of summit for English Language Learners. : 1  the highest point of a mountain : the top of a mountain. : 2  the highest level. : 3  a meeting or series of meetings between the leaders of two or more governments.".to_string(),
         ];
         let req = EmebeddingRequest::E5Request {
-            params: embedder::E5Params { text: &text },
+            params: embedder::E5Params { text: text },
         };
         mgr.encode("ModelClass_E5", model_name, &req)
             .expect("issue during the encode process");
@@ -288,7 +288,7 @@ mod tests {
             "then do it better".to_string(),
         ];
         let req = EmebeddingRequest::CLIPRequest {
-            params: embedder::CLIPParams::Text { vals: &text },
+            params: embedder::CLIPParams::Text { vals: text },
         };
         let encode_now = Instant::now();
         let num_iters = 1;
