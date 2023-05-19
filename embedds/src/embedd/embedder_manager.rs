@@ -256,11 +256,6 @@ mod tests {
 
     #[test]
     fn test_manager() {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(Level::INFO)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("unable to create the tracing subscriber");
         let model_path = PathBuf::from(".cache");
         let model_name = "VIT_L_14_336_OPENAI";
         let mgr =

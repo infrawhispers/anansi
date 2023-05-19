@@ -3,3 +3,6 @@ rustflags = [ "-Clink-args=-Wl,-rpath,\\$ORIGIN", "-C", "target-cpu=native" ]
 
 [build]
 rustflags = ["-C", "target-cpu=native"]
+
+[test]
+rustflags = ["-C", "target-cpu=native"]

@@ -257,8 +257,19 @@ where
                     continue;
                 }
                 let segment_id: usize = key_parts[key_parts.len() - 1].parse()?;
-                let segment_data: RwLock<av_store::AlignedDataStore<TVal>> =
+                // info!("loaded - segment_id: {segment_id:?}");
+                let segment_data_r: RwLock<av_store::AlignedDataStore<TVal>> =
                     rmp_serde::from_slice(&(v))?;
+                // this needs to be actually aligned so we _must_ call new
+                // in order to avoid segfaults
+                let segment_data: RwLock<av_store::AlignedDataStore<TVal>> =
+                    RwLock::new(av_store::AlignedDataStore::new(
+                        self.config.v_per_segment,
+                        self.config.aligned_dim.try_into().unwrap(),
+                    ));
+                segment_data.write().num_vectors = segment_data_r.read().num_vectors;
+                segment_data.write().data[..].copy_from_slice(&segment_data_r.read().data[..]);
+                // info!("loaded - segment_data: {segment_data:?}");
                 self.datastore.write().insert(segment_id, segment_data);
             }
         }
@@ -433,9 +444,10 @@ where
                 None => new_segment_ids.push(*segment_id),
             }
         });
-        // finally write out items on a per-segement basis
+        // println!("new_segment_ids: {new_segment_ids:?}");
+        // finally write out items on a per-segment basis
         for (segment_id, vids) in vid_by_segment_id {
-            if !new_segment_ids.contains(&segment_id) {
+            if new_segment_ids.contains(&segment_id) {
                 let mut datastore = self.datastore.write();
                 let segment;
                 if datastore.contains_key(&segment_id) {
@@ -467,7 +479,7 @@ where
                 let datastore = self.datastore.read();
                 let segment = datastore.get(&segment_id).ok_or_else(|| {
                     anyhow::anyhow!(
-                        "unable to get the segment_id {segment_id} - when it should already exist.",
+                        "unable to get the segment_id {segment_id} - although we asserted that it should be missing",
                     )
                 })?;
                 self.insert_segment(segment_id, segment, &vids, eids, &idx_by_vid, padded_points)?;
@@ -508,11 +520,13 @@ where
             None => padded_points = data,
         }
 
+        // info!("stage: running the search");
         // maybe we want to keep around a bunch of these in a pool we can pull from?
         let res_heap: Mutex<BinaryHeap<ann::Node>> = Mutex::new(BinaryHeap::with_capacity(k + 1));
         let mut q_aligned: av_store::AlignedDataStore<TVal> =
             av_store::AlignedDataStore::<TVal>::new(1, self.config.aligned_dim);
         q_aligned.data[..padded_points.len()].copy_from_slice(&padded_points[..]);
+        // info!("stage: generated q_aligned");
         // we should probably use rayon over segments and have multiple vectors
         // in a given segment
         self.datastore
@@ -522,7 +536,7 @@ where
                 // we are now in a single segment
                 let data = vec_store.read();
                 let mut nodes = Vec::with_capacity(data.num_vectors);
-
+                // info!("stage: running in the segment: {segment_id}");
                 for i in 0..data.num_vectors {
                     let eid: ann::EId;
                     let vid = *segment_id * (self.config.v_per_segment as usize) + i;
@@ -532,10 +546,17 @@ where
                             continue;
                         }
                     }
+                    // info!("stage: fetched the correct vid");
                     let arr_a: &[TVal] = &q_aligned.data[..];
                     let arr_b: &[TVal] = &data.data[i * self.config.aligned_dim
                         ..(i * self.config.aligned_dim) + self.config.aligned_dim];
+                    // info!(
+                    //     "stage: arr_a len: {} | arr_b len: {}",
+                    //     arr_a.len(),
+                    //     arr_b.len()
+                    // );
                     let dist = TMetric::compare(arr_a, arr_b);
+                    // info!("stage: ran the distance comparison");
                     nodes.push(ann::Node {
                         vid: vid,
                         eid: eid,
@@ -568,6 +589,7 @@ where
             res_vec.push(neighbor_rev);
         }
         res_vec.reverse();
+        // info!("stage: search is complete");
         Ok(res_vec)
     }
 
@@ -627,7 +649,7 @@ mod tests {
     use std::path::PathBuf;
     #[test]
     fn flat_rocksdb_normal() {
-        let dimensions = 128;
+        let dimensions = 768;
         let dir_path = PathBuf::from(".test/flat_rocksdb_normal");
         let _ = fs::remove_dir_all(dir_path.clone());
         fs::create_dir_all(dir_path.clone()).expect("unable to create the test directory");
@@ -636,19 +658,20 @@ mod tests {
         options.create_if_missing(true);
         options.create_missing_column_families(true);
         let cfs = rocksdb::DB::list_cf(&options, dir_path.clone()).unwrap_or(vec![]);
-        let rocksdb_instance = rocksdb::DB::open_cf(&options, dir_path.clone(), cfs)
-            .expect("unable to create the rocksdb instance");
-
-        let params = FlatFullParams {
-            params: FlatLiteParams {
-                dim: dimensions,
-                segment_size_kb: 512,
-            },
-            index_name: "test-00000".to_string(),
-            dir_path: dir_path.clone(),
-            rocksdb_instance: Arc::new(RwLock::new(rocksdb_instance)),
-        };
         {
+            let rocksdb_instance = rocksdb::DB::open_cf(&options, dir_path.clone(), cfs.clone())
+                .expect("unable to create the rocksdb instance");
+
+            let params = FlatFullParams {
+                params: FlatLiteParams {
+                    dim: dimensions,
+                    segment_size_kb: 512,
+                },
+                index_name: "test-00000".to_string(),
+                dir_path: dir_path.clone(),
+                rocksdb_instance: Arc::new(RwLock::new(rocksdb_instance)),
+            };
+
             // this index gets dropped at the end of this block
             let index = FlatIndex::<metric::MetricL2, f32>::new_from_params(&params)
                 .expect("no error thrown on creation");
@@ -672,6 +695,18 @@ mod tests {
                     .unwrap()
             );
         }
+        let rocksdb_instance = rocksdb::DB::open_cf(&options, dir_path.clone(), cfs)
+            .expect("unable to create the rocksdb instance");
+        let params = FlatFullParams {
+            params: FlatLiteParams {
+                dim: 128,
+                segment_size_kb: 512,
+            },
+            index_name: "test-00000".to_string(),
+            dir_path: dir_path.clone(),
+            rocksdb_instance: Arc::new(RwLock::new(rocksdb_instance)),
+        };
+
         let index = FlatIndex::<metric::MetricL2, f32>::new_from_params(&params)
             .expect("no error on recreation of index");
         let point_search = vec![1.2 * (10000 as f32); dimensions];

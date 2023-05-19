@@ -198,7 +198,7 @@ where
     fn link(&self, visit_order: Vec<usize>, do_prune: bool) {
         let params_r = self.params.read();
         // TODO(infrawhispers) - WASM + Rayon on M1 macs is broken!
-        visit_order.iter().for_each(|vid| {
+        visit_order.par_iter().for_each(|vid| {
             let mut pruned_list: Vec<usize> = Vec::new();
             // let mut scratch: nn_query_scratch::InMemoryQueryScratch =
             //     nn_query_scratch::InMemoryQueryScratch::new(&params_r);
@@ -239,7 +239,7 @@ where
         }
         let data = &self.data.read();
         // self.indexing_pool.install(|| {
-        visit_order.iter().for_each(|curr_vid| {
+        visit_order.par_iter().for_each(|curr_vid| {
             let should_prune: bool;
             let graph_copy: Vec<usize>;
             {

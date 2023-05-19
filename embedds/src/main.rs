@@ -302,6 +302,7 @@ impl ApiServerImpl {
             .index_mgr
             .search_preprocess(&req.index_name, &req.queries)
             .with_context(|| "failed to transform the search req")?;
+        // info!("finished search_preprocess");
         if req.per_search_limit > 1024 {
             // this prevents us from massive allocations for a pool of available
             // nns in the backends
@@ -323,7 +324,9 @@ impl ApiServerImpl {
                     })?;
                     embedds.into_iter().for_each(|e| {
                         isearch.push(embeddings::manager::json_manager::IndexSearch {
+                            return_documents: true,
                             embedding: e,
+
                             attributes: &attributes,
                             weighting: &req.weighting,
                             limit: req.per_search_limit as usize,
@@ -344,6 +347,7 @@ impl ApiServerImpl {
                             .into_iter()
                             .for_each(|embedd| {
                                 isearch.push(embeddings::manager::json_manager::IndexSearch {
+                                    return_documents: true,
                                     embedding: embedd,
                                     attributes: &attributes,
                                     weighting: &req.weighting,
@@ -357,11 +361,13 @@ impl ApiServerImpl {
         let mut resp = embeddings::api::SearchIndexResponse {
             response: Vec::new(),
         };
+        // info!("initating the search");
         // we now can issue the search request
         let results = isearch
             .iter()
             .map(|req_search| self.index_mgr.search(&req.index_name, req_search))
             .collect::<Vec<anyhow::Result<Vec<embeddings::manager::json_manager::NodeHit>>>>();
+        // info!("finished running the search");
         // then form the results object that we send out to the client
         results.into_iter().for_each(|result| match result {
             Ok(nns) => resp.response.push(embeddings::api::SearchResponse {
@@ -371,7 +377,7 @@ impl ApiServerImpl {
                     .map(|nn| embeddings::api::NearestNeighbor {
                         id: nn.id,
                         distance: nn.distance,
-                        document: "".to_string(),
+                        document: nn.document.unwrap(),
                     })
                     .collect::<Vec<embeddings::api::NearestNeighbor>>(),
                 err_message: "".to_string(),
@@ -386,7 +392,7 @@ impl ApiServerImpl {
     }
 
     fn _index_data(&self, index_name: &str, data: &str) -> anyhow::Result<()> {
-        let docs = self
+        let (docs, src_by_id) = self
             .index_mgr
             .insert_preprocess(index_name, data)
             .with_context(|| "failed to extract the documents from the supplied JSON")?;
@@ -423,7 +429,8 @@ impl ApiServerImpl {
             }
         }
         // finally run the insertion process:
-        self.index_mgr.insert_data(index_name, doc_embedds)
+        self.index_mgr
+            .insert_data(index_name, doc_embedds, src_by_id)
     }
 }
 #[tonic::async_trait]

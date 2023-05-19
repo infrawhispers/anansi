@@ -83,7 +83,7 @@ where
         Ok(())
     }
     fn delete_index(&self) -> anyhow::Result<()> {
-        unimplemented!()
+        Ok(())
     }
 }
 

@@ -117,11 +117,11 @@ impl IndexManager {
                 let params = ANNParams::DiskANN {
                     params: DiskANNParams {
                         dim: 128,
-                        max_points: 10000,
-                        indexing_threads: Some(1),
+                        max_points: 1_000_000,
+                        indexing_threads: None,
                         indexing_range: 64,
                         indexing_queue_size: 100,
-                        indexing_maxc: 140,
+                        indexing_maxc: 750,
                         indexing_alpha: 1.2,
                         maintenance_period_millis: 500,
                     },

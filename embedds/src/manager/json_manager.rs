@@ -19,6 +19,8 @@ extern crate rmp_serde as rmps;
 
 #[derive(Debug)]
 pub struct IndexSearch<'a> {
+    // pub embedding_search: Vec<f32>,
+    pub return_documents: bool,
     pub embedding: Vec<f32>,
     pub attributes: &'a [&'a str],
     pub weighting: &'a HashMap<String, f32>,
@@ -61,7 +63,8 @@ struct CollectionMgr {
 
 impl CollectionMgr {
     fn init_sub_indices(&self) -> anyhow::Result<()> {
-        for (_, idx_name) in self.sub_index_by_name.write().iter() {
+        for (field, idx_name) in self.sub_index_by_name.write().iter() {
+            info!("initating field: {} | fqn: {}", field, idx_name);
             self.index_mgr.new_index(
                 &idx_name,
                 &self.settings.index_type,
@@ -98,21 +101,26 @@ impl CollectionMgr {
         // write out the sub_index details to rocksdb and update our in-memory listings
         {
             let instance = self.rocksdb_instance.read();
-            let cf = instance.cf_handle(&self.name).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "unable to fetch column family: {} was it created?",
-                    self.name
-                )
-            })?;
+            let cf = instance
+                .cf_handle(&self.name)
+                .ok_or_else(|| anyhow::anyhow!("unable to fetch column family: {}", self.name))?;
             let mut sub_idx = self.sub_index_by_name.write();
+            sub_idx.insert(field_name.to_string(), sub_index_name.to_string());
             let sub_idx_b = rmp_serde::to_vec(&*sub_idx)?;
             instance.put_cf(cf, b"sub_index_by_name", sub_idx_b)?;
-            sub_idx.insert(field_name.to_string(), sub_index_name.to_string());
         }
         Ok(())
     }
 
-    fn insert_data(&self, data: Vec<crate::IndexItems>) -> anyhow::Result<()> {
+    // fn delete_data(&self, eids: Vec<retrieval::ann::EId>) -> anyhow::Result<()> {
+    //     for eid in eids.iter() {}
+    // }
+
+    fn insert_data(
+        &self,
+        data: Vec<crate::IndexItems>,
+        src_by_id: HashMap<retrieval::ann::EId, serde_json::Value>,
+    ) -> anyhow::Result<()> {
         for req in data.iter() {
             let field_name = &req.sub_indices[0];
             let mut must_create: bool = false;
@@ -140,6 +148,7 @@ impl CollectionMgr {
                 retrieval::ann::Points::Values { vals: &vals },
             )?;
         }
+        self.doc_store.insert(src_by_id)?;
         Ok(())
     }
 
@@ -289,7 +298,7 @@ impl CollectionMgr {
             )?),
             index_mgr: index_mgr,
             settings: settings,
-            sub_index_by_name: RwLock::new(HashMap::new()),
+            sub_index_by_name: sub_index_by_name,
             rocksdb_instance: rocksdb_instance.clone(),
         };
         obj.init_sub_indices()?;
@@ -426,17 +435,27 @@ impl CollectionMgr {
         Ok(res)
     }
 
-    fn insert_preprocess(&self, data: &str) -> anyhow::Result<Vec<crate::IndexItems>> {
+    fn insert_preprocess(
+        &self,
+        data: &str,
+    ) -> anyhow::Result<(
+        Vec<crate::IndexItems>,
+        HashMap<retrieval::ann::EId, serde_json::Value>,
+    )> {
         let mut res: HashMap<String, serde_json::Map<String, Value>> = HashMap::new();
+        // we store id -> serde_json::Value in order to do the actual insertions
+        let mut val_by_id: HashMap<retrieval::ann::EId, serde_json::Value> = HashMap::new();
         let obj: Value = serde_json::Value::from_str(data)
             .with_context(|| "unable to parse supplied JSON, must be one of: [obj, arr]")?;
         if obj.is_object() {
             // a single object is passed
             let id = self.get_obj_id(&obj)?;
+            let eid = retrieval::ann::EId::from_str(&id)?;
             let val = obj
                 .as_object()
                 .ok_or_else(|| anyhow::anyhow!("obj must be a valid JSON object"))?;
             res.insert(id.to_string(), super::utils::flatten(val));
+            val_by_id.insert(eid, obj.clone());
         } else if obj.is_array() {
             // a list of objects is passed, we only look at the top level
             // entries
@@ -447,15 +466,19 @@ impl CollectionMgr {
                 .enumerate()
             {
                 let id = self.get_obj_id(&item)?;
+                let eid = retrieval::ann::EId::from_str(&id)?;
                 let val = item.as_object().ok_or_else(|| {
                     anyhow::anyhow!("the obj ({item}) at idx: {idx} must be a valid JSON object")
                 })?;
                 res.insert(id.to_string(), super::utils::flatten(val));
+                val_by_id.insert(eid, item.clone());
             }
         } else {
             bail!("unable to split supplied JSON, must be one of: [obj, arr]");
         }
-        self.docs_to_embedd_req(&res)
+        // pre-process the flatten documents
+        let result = self.docs_to_embedd_req(&res)?;
+        Ok((result, val_by_id))
     }
 
     fn search_preprocess(
@@ -498,8 +521,14 @@ impl CollectionMgr {
         }
         Ok(res)
     }
+    fn doc_eid_fr(eid: &retrieval::ann::EId) -> anyhow::Result<retrieval::ann::EId> {
+        let val = eid.to_string();
+        let parts: Vec<&str> = val.split(":").collect();
+        Ok(retrieval::ann::EId::from_str(parts[0])?)
+    }
 
     fn search(&self, req: &IndexSearch) -> anyhow::Result<Vec<NodeHit>> {
+        // info!("running search");
         let sub_indices = self.sub_index_by_name.read();
         let active_attributes: Vec<String> = sub_indices
             .keys()
@@ -526,7 +555,6 @@ impl CollectionMgr {
                 boost_vals.insert(attr.to_string(), 1.0 - (boost / boost_denom));
             });
         }
-
         // walk through all the attributes and generate the nodes
         // that we care about
         let mut max_distance: f32 = f32::MIN;
@@ -558,25 +586,47 @@ impl CollectionMgr {
                 .collect();
             all_nodes.extend(tagged_nodes);
         }
+        let mut eids_to_pull: Vec<retrieval::ann::EId> = Vec::new();
         // normalize by all the distances
-
         if re_rank {
-            all_nodes.iter_mut().for_each(|x| {
-                let boost = boost_vals.get(x.field).unwrap_or(&1.0);
-                x.ann_node.distance = (x.ann_node.distance / max_distance) * boost;
-            });
+            for nn in all_nodes.iter_mut() {
+                let boost = boost_vals.get(nn.field).unwrap_or(&1.0);
+                nn.ann_node.distance = (nn.ann_node.distance / max_distance) * boost;
+                eids_to_pull.push(Self::doc_eid_fr(&nn.ann_node.eid)?);
+            }
+        } else {
+            for nn in all_nodes.iter() {
+                eids_to_pull.push(Self::doc_eid_fr(&nn.ann_node.eid)?);
+            }
         }
+
+        let mapping: HashMap<retrieval::ann::EId, serde_json::Value> = if req.return_documents {
+            self.doc_store.get(&eids_to_pull)?
+        } else {
+            HashMap::new()
+        };
+        // let mapping =
         // sort all the nodes then take the best k
         all_nodes.sort();
-        Ok(all_nodes
+        let nodes: anyhow::Result<Vec<NodeHit>> = all_nodes
             .into_iter()
             .take(req.limit)
-            .map(|nn| NodeHit {
-                id: nn.ann_node.eid.to_string(),
-                distance: nn.ann_node.distance,
-                document: None,
+            .map(|nn| {
+                let eid = Self::doc_eid_fr(&nn.ann_node.eid)?;
+                let document: Option<String> = if req.return_documents {
+                    Some(mapping.get(&eid).unwrap().to_string())
+                } else {
+                    None
+                };
+
+                Ok(NodeHit {
+                    id: nn.ann_node.eid.to_string(),
+                    distance: nn.ann_node.distance,
+                    document: document,
+                })
             })
-            .collect::<Vec<NodeHit>>())
+            .collect::<anyhow::Result<Vec<NodeHit>>>();
+        Ok(nodes?)
     }
 }
 
@@ -747,7 +797,10 @@ impl JSONIndexManager {
         &self,
         index_name: &str,
         data: &str,
-    ) -> anyhow::Result<Vec<crate::IndexItems>> {
+    ) -> anyhow::Result<(
+        Vec<crate::IndexItems>,
+        HashMap<retrieval::ann::EId, serde_json::Value>,
+    )> {
         let mgrs = self.index_details.read();
         let mgr = mgrs
             .get(index_name)
@@ -759,12 +812,13 @@ impl JSONIndexManager {
         &self,
         index_name: &str,
         data: Vec<crate::IndexItems>,
+        src_by_id: HashMap<retrieval::ann::EId, serde_json::Value>,
     ) -> anyhow::Result<()> {
         let mgrs = self.index_details.read();
         let mgr = mgrs
             .get(index_name)
             .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
-        mgr.insert_data(data)
+        mgr.insert_data(data, src_by_id)
     }
 
     pub fn delete_index(&self, index_name: &str) -> anyhow::Result<()> {
@@ -874,9 +928,10 @@ mod tests {
                 to_embedd: None,
             },
         ];
-        mgr.insert_data("test-0000", index_req)
+        mgr.insert_data("test-0000", index_req, HashMap::new())
             .expect("insertion should work");
         let search_req = IndexSearch {
+            return_documents: false,
             embedding: vec![2.0; 768],
             attributes: &vec!["paragraph", "title"],
             weighting: &HashMap::from([
@@ -906,6 +961,7 @@ mod tests {
         );
 
         let search_req_bad = IndexSearch {
+            return_documents: false,
             embedding: vec![2.0; 768],
             attributes: &vec!["non-existent"],
             weighting: &HashMap::new(),

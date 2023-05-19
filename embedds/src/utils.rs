@@ -242,15 +242,9 @@ mod tests {
 
     #[test]
     fn test_donwload_sync() {
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(Level::INFO)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("unable to create the tracing subscriber");
-
         let uri = "https://d1wz516niig2xr.cloudfront.net/scratch/download.bin";
         let with_resume = true;
-        let dest_path = PathBuf::from("scratch/test");
+        let dest_path = PathBuf::from(".data/.test/utils");
         if !dest_path.exists() {
             fs::create_dir_all(dest_path.clone()).expect("unable to create the directory");
         }
