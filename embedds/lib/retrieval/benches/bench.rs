@@ -221,13 +221,19 @@ fn search_benchmark(c: &mut Criterion) {
     let _ = fs::remove_dir_all(".test");
     let mgr = IndexManager::new(&PathBuf::from(".test"));
     let index_name = "test-0000";
-    let params = retrieval::ann::ANNParams::FlatLite {
-        params: retrieval::flat_lite::FlatLiteParams {
+    let params = retrieval::ann::ANNParams::DiskANN {
+        params: retrieval::diskannv1::DiskANNParams {
             dim: dimensions,
-            segment_size_kb: 1024,
+            max_points: eids.len() + 1,
+            indexing_threads: None,
+            indexing_range: 64,       // R
+            indexing_queue_size: 100, // L
+            indexing_maxc: 750,       // C
+            indexing_alpha: 1.2,      // alpha
+            maintenance_period_millis: 500,
         },
     };
-    mgr.new_index(index_name, "DiskANNV1", "MetricL2", &params)
+    mgr.new_index(index_name, "DiskANNLite", "MetricL2", &params)
         .expect("fresh index creation does not fail");
     mgr.insert(
         index_name.to_string(),

@@ -113,48 +113,39 @@ impl IndexManager {
     ) -> anyhow::Result<Arc<dyn ANNIndex<Val = f32>>> {
         let aidx: Arc<dyn ANNIndex<Val = f32>>;
         match index_type {
-            "DiskANNV1" => {
-                let params = ANNParams::DiskANN {
-                    params: DiskANNParams {
-                        dim: 128,
-                        max_points: 1_000_000,
-                        indexing_threads: None,
-                        indexing_range: 64,
-                        indexing_queue_size: 100,
-                        indexing_maxc: 750,
-                        indexing_alpha: 1.2,
-                        maintenance_period_millis: 500,
-                    },
-                };
+            "DiskANNLite" => {
+                // let params = ANNParams::DiskANN {
+                //     params: DiskANNParams {
+                //         dim: 128,
+                //         max_points: 1_000_000,
+                //         indexing_threads: None,
+                //         indexing_range: 64,
+                //         indexing_queue_size: 100,
+                //         indexing_maxc: 750,
+                //         indexing_alpha: 1.2,
+                //         maintenance_period_millis: 500,
+                //     },
+                // };
                 match metric_type {
-                    "MetricL2" => match DiskANNV1Index::new(&params) {
-                        Ok(res) => {
-                            let idx: DiskANNV1Index<crate::metric::MetricL2, f32> = res;
-                            aidx = Arc::new(idx);
-                        }
-                        Err(err) => {
-                            bail!("unable to create the index: {}", err)
-                        }
-                    },
-                    "MetricL1" => match DiskANNV1Index::new(&params) {
-                        Ok(res) => {
-                            let idx: DiskANNV1Index<crate::metric::MetricL1, f32> = res;
-                            aidx = Arc::new(idx);
-                        }
-                        Err(err) => {
-                            bail!("unable to create the index: {}", err)
-                        }
-                    },
-                    "MetricCosine" => match DiskANNV1Index::new(&params) {
-                        Ok(res) => {
-                            let idx: DiskANNV1Index<crate::metric::MetricCosine, f32> = res;
-                            aidx = Arc::new(idx);
-                        }
-                        Err(err) => {
-                            bail!("unable to create the index: {}", err)
-                        }
-                    },
-                    &_ => todo!(),
+                    "MetricL2" => {
+                        let idx: DiskANNV1Index<crate::metric::MetricL2, f32> =
+                            DiskANNV1Index::new(&index_params)
+                                .with_context(|| "unable to create the index")?;
+                        aidx = Arc::new(idx);
+                    }
+                    "MetricL1" => {
+                        let idx: DiskANNV1Index<crate::metric::MetricL1, f32> =
+                            DiskANNV1Index::new(&index_params)
+                                .with_context(|| "unable to create the index")?;
+                        aidx = Arc::new(idx);
+                    }
+                    "MetricCosine" => {
+                        let idx: DiskANNV1Index<crate::metric::MetricL1, f32> =
+                            DiskANNV1Index::new(&index_params)
+                                .with_context(|| "unable to create the index")?;
+                        aidx = Arc::new(idx);
+                    }
+                    &_ => bail!("unknown metric type: {metric_type}"),
                 }
             }
             "Flat" => {
