@@ -289,7 +289,27 @@ message IndexDataResponse {
   repeated IndexResult results = 1;
 }
 
+message DeleteDataRequest {
+  string index_name = 1;
+  repeated string ids = 2;
+}
+message DeleteDataResponse{}
+
 service Api {
+
+  rpc DeleteData(DeleteDataRequest) returns (DeleteDataResponse) {
+    option (google.api.http) = {
+      post: "/delete"
+      body: "*"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "delete_data",
+      description:
+      "removes data from the given documents "
+      consumes: "application/json";
+      produces: "application/json";
+    };
+  };
 
   rpc IndexData(IndexDataRequest) returns (IndexDataResponse) {
     option (google.api.http) = {

@@ -112,9 +112,18 @@ impl CollectionMgr {
         Ok(())
     }
 
-    // fn delete_data(&self, eids: Vec<retrieval::ann::EId>) -> anyhow::Result<()> {
-    //     for eid in eids.iter() {}
-    // }
+    fn delete_data(&self, ids: Vec<String>) -> anyhow::Result<()> {
+        let eids: Vec<retrieval::ann::EId> = ids
+            .iter()
+            .map(|id| Ok(retrieval::ann::EId::from_str(&id)?))
+            .collect::<anyhow::Result<Vec<retrieval::ann::EId>>>()?;
+        let sub_indices = self.sub_index_by_name.read();
+        for (field, index) in sub_indices.iter() {
+            self.index_mgr.delete_data(index, &eids)?;
+        }
+        // sub_indices.iter().for_each(|())
+        bail!("this is not currently implemented!")
+    }
 
     fn insert_data(
         &self,
@@ -806,6 +815,14 @@ impl JSONIndexManager {
             .get(index_name)
             .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
         mgr.insert_preprocess(data)
+    }
+
+    pub fn delete_data(&self, index_name: &str, ids: Vec<String>) -> anyhow::Result<()> {
+        let mgrs = self.index_details.read();
+        let mgr = mgrs
+            .get(index_name)
+            .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
+        mgr.delete_data(ids)
     }
 
     pub fn insert_data(

@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::ann::Points;
-use crate::ann::{ANNIndex, ANNParams, EId, Node};
-use crate::diskannv1::{DiskANNParams, DiskANNV1Index};
+use crate::ann::{ANNIndex, EId, Node};
+use crate::diskannv1::DiskANNV1Index;
 use crate::flat_lite::FlatIndex as FlatLiteIndex;
 
 #[cfg(feature = "full")]
@@ -46,7 +46,7 @@ impl IndexManager {
     }
 
     #[cfg(not(feature = "full"))]
-    pub fn new(dir: &PathBuf) -> Self {
+    pub fn new(_dir: &PathBuf) -> Self {
         IndexManager {
             indices: RwLock::new(HashMap::new()),
         }
@@ -91,6 +91,14 @@ impl IndexManager {
         index.search(q, k)
     }
 
+    pub fn delete_data(&self, index_name: &str, eids: &[EId]) -> anyhow::Result<()> {
+        let indices = self.indices.read();
+        let index = indices
+            .get(index_name)
+            .ok_or_else(|| anyhow::anyhow!("mgr:: index \"{index_name}\" does not exist"))?;
+        index.delete(eids)
+    }
+
     pub fn insert(
         &self,
         index_name: String,
@@ -106,48 +114,33 @@ impl IndexManager {
 
     pub fn create_index(
         &self,
-        index_name: &str,
         index_type: &str,
         metric_type: &str,
         index_params: &crate::ann::ANNParams,
     ) -> anyhow::Result<Arc<dyn ANNIndex<Val = f32>>> {
         let aidx: Arc<dyn ANNIndex<Val = f32>>;
         match index_type {
-            "DiskANNLite" => {
-                // let params = ANNParams::DiskANN {
-                //     params: DiskANNParams {
-                //         dim: 128,
-                //         max_points: 1_000_000,
-                //         indexing_threads: None,
-                //         indexing_range: 64,
-                //         indexing_queue_size: 100,
-                //         indexing_maxc: 750,
-                //         indexing_alpha: 1.2,
-                //         maintenance_period_millis: 500,
-                //     },
-                // };
-                match metric_type {
-                    "MetricL2" => {
-                        let idx: DiskANNV1Index<crate::metric::MetricL2, f32> =
-                            DiskANNV1Index::new(&index_params)
-                                .with_context(|| "unable to create the index")?;
-                        aidx = Arc::new(idx);
-                    }
-                    "MetricL1" => {
-                        let idx: DiskANNV1Index<crate::metric::MetricL1, f32> =
-                            DiskANNV1Index::new(&index_params)
-                                .with_context(|| "unable to create the index")?;
-                        aidx = Arc::new(idx);
-                    }
-                    "MetricCosine" => {
-                        let idx: DiskANNV1Index<crate::metric::MetricL1, f32> =
-                            DiskANNV1Index::new(&index_params)
-                                .with_context(|| "unable to create the index")?;
-                        aidx = Arc::new(idx);
-                    }
-                    &_ => bail!("unknown metric type: {metric_type}"),
+            "DiskANNLite" => match metric_type {
+                "MetricL2" => {
+                    let idx: DiskANNV1Index<crate::metric::MetricL2, f32> =
+                        DiskANNV1Index::new(&index_params)
+                            .with_context(|| "unable to create the index")?;
+                    aidx = Arc::new(idx);
                 }
-            }
+                "MetricL1" => {
+                    let idx: DiskANNV1Index<crate::metric::MetricL1, f32> =
+                        DiskANNV1Index::new(&index_params)
+                            .with_context(|| "unable to create the index")?;
+                    aidx = Arc::new(idx);
+                }
+                "MetricCosine" => {
+                    let idx: DiskANNV1Index<crate::metric::MetricL1, f32> =
+                        DiskANNV1Index::new(&index_params)
+                            .with_context(|| "unable to create the index")?;
+                    aidx = Arc::new(idx);
+                }
+                &_ => bail!("unknown metric type: {metric_type}"),
+            },
             "Flat" => {
                 #[cfg(feature = "full")]
                 {
@@ -236,7 +229,7 @@ impl IndexManager {
             }
         }
         // create the index and run the operations that we care about
-        let index = self.create_index(index_name, index_type, metric_type, index_params)?;
+        let index = self.create_index(index_type, metric_type, index_params)?;
         let mut indices_w = self.indices.write();
         indices_w.insert(index_name.to_string(), index);
         Ok(())

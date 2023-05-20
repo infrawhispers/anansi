@@ -503,6 +503,17 @@ impl Api for ApiServerImpl {
         Ok(Response::new(reply))
     }
 
+    async fn delete_data(
+        &self,
+        request: Request<embeddings::api::DeleteDataRequest>,
+    ) -> Result<Response<embeddings::api::DeleteDataResponse>, Status> {
+        let req = request.into_inner();
+        match self.index_mgr.delete_data(&req.index_name, req.ids) {
+            Ok(()) => {}
+            Err(err) => return Err(Status::new(Code::Internal, format!("{err:?}"))),
+        }
+        Ok(Response::new(embeddings::api::DeleteDataResponse {}))
+    }
     async fn index_data(
         &self,
         request: Request<embeddings::api::IndexDataRequest>,

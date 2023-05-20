@@ -16,6 +16,7 @@ pub mod metric;
 mod nn_query_scratch;
 mod nn_queue;
 pub mod scalar_quantizer;
+pub mod utils;
 // mod diskannv1_test;
 
 #[cfg(feature = "full")]
