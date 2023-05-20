@@ -30,9 +30,9 @@
   "paths": {
     "/encode": {
       "post": {
-        "summary": "encode",
-        "description": "Generates a vector representation of text or images using the specified embedding model. If the model does not exist or has not been loaded, an error will be returned for that particular data item. \u003cbr/\u003e\u003cbr/\u003eIt is recommended that multiple pieces of content are specified in a single request to take advantage of batching, especially when running under with a GPU accelerated \u003ca href='https://onnxruntime.ai/docs/execution-providers/' target='_blank'\u003eExecutionProvider.\u003c/a\u003e Recommended sizes can be found at \u003ca href='/embedds/supported-models' target='_blank'\u003eembedds/model-details\u003c/a\u003e and embedds will attempt to split and batch encoding requests.\u003cbr/\u003e----\u003cbr/\u003e\u003cb\u003eNot all models support [text, instructions, image, image_uri]\u003c/b\u003e a breakdown of present support is outlined below:\u003cul\u003e\u003cli\u003eModelClass_INSTRUCTOR - requires: {text, instructions}\u003c/li\u003e\u003cli\u003eModelClass_CLIP - any_of: {text, image_uri, image}\u003c/li\u003e\u003c/ul\u003e",
-        "operationId": "Api_Encode",
+        "summary": "Encode::Encode",
+        "description": "Generates a vector representation of text or images using the specified embedding model. If the model does not exist or has not been loaded, an error will be returned for that particular data item. \u003cbr/\u003e\u003cbr/\u003eIt is recommended that multiple pieces of content are specified in a single request to take advantage of batching, especially when running with an attached \u003ca href='https://onnxruntime.ai/docs/execution-providers/' target='_blank'\u003eGPU.\u003c/a\u003e Recommended sizes can be found at \u003ca href='/embedds/supported-models' target='_blank'\u003eembedds/model-details\u003c/a\u003e and batching will be automatically done.\u003cbr/\u003e----\u003cbr/\u003e\u003cb\u003eNot all models support [text, images, image_uris]\u003c/b\u003e a breakdown of present support is outlined below:\u003cul\u003e\u003cli\u003eModelClass_INSTRUCTOR - requires: {text and data.instruction}\u003c/li\u003e\u003cli\u003eModelClass_CLIP - any_of: {text, images}\u003c/li\u003e\u003c/ul\u003e",
+        "operationId": "encode_",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -68,11 +68,11 @@
         ]
       }
     },
-    "/initalize_models": {
+    "/encode/initialize": {
       "post": {
-        "summary": "initialize_models",
-        "description": "Intializes an onnx model, adding it to the pool of models available for embedding generation. ONNX models are loaded from the folder designated by ```EMBBEDDS_CACHE_FOLDER``` and it is recommended that this folder be volume mounted if running within a container.\u003cbr/\u003e\u003cbr/\u003eIf the model is missing, the server will attempt to download the corresponding file from a remote source.\u003cbr/\u003e\u003cbr/\u003eembedds must be created with ```EMBEDDS_ALLOW_ADMIN=true``` as the unrestricted creation of models can lead to resource starvation. If you are exposing the process to non-trusted clients, we recommended that ```EMBEDDS_ALLOW_ADMIN``` be set to false.",
-        "operationId": "Api_InitializeModel",
+        "summary": "Encode::Initialize",
+        "description": "Intializes an ONNX based embedding model, adding it to the pool of models available for vector generation. ONNX models are loaded from the folder designated by ```EMBBEDDS_CACHE_FOLDER``` and it is recommended that this folder be volume mounted if running within a container.\u003cbr/\u003e\u003cbr/\u003eIf the model is missing, the server will attempt to download the corresponding file from a remote source.\u003cbr/\u003e\u003cbr/\u003eembedds must be created with ```EMBEDDS_ALLOW_ADMIN=true``` as the unrestricted creation of models can lead to resource starvation. If you are exposing the process to non-trusted clients, we recommended that ```EMBEDDS_ALLOW_ADMIN``` be set to false.",
+        "operationId": "encode_initialize",
         "responses": {
           "200": {
             "description": "A successful response.",
@@ -107,10 +107,337 @@
           "application/json"
         ]
       }
+    },
+    "/index": {
+      "get": {
+        "summary": "Index::Get",
+        "description": "fetches all initialized and running indices ",
+        "operationId": "index_get",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiGetIndicesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "Api"
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ]
+      },
+      "post": {
+        "summary": "Index::Create",
+        "description": "TODO(infrawhispers) - PENDING",
+        "operationId": "index_create",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiCreateIndexResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiCreateIndexRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Api"
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ]
+      }
+    },
+    "/index/deactivate": {
+      "post": {
+        "summary": "Index::Deactivate",
+        "description": "TODO(infrawhispers) - PENDING",
+        "operationId": "index_deactivate",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiDeactivateIndexResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiDeactivateIndexRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Api"
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ]
+      }
+    },
+    "/index/delete": {
+      "post": {
+        "summary": "Index::Delete",
+        "operationId": "index_delete",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiDeleteIndexResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiDeleteIndexRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Api"
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ]
+      }
+    },
+    "/index/delete_data": {
+      "post": {
+        "summary": "Index::DeleteData",
+        "description": "Deletes data from the given index based on the supplied ids ",
+        "operationId": "index_delete_data",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiDeleteDataResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiDeleteDataRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Api"
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ]
+      }
+    },
+    "/index/search": {
+      "post": {
+        "summary": "Index::Search",
+        "description": "TODO(infrawhispers) - PENDING",
+        "operationId": "index_search",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/apiSearchIndexResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/apiSearchIndexRequest"
+            }
+          }
+        ],
+        "tags": [
+          "Api"
+        ],
+        "consumes": [
+          "application/json"
+        ],
+        "produces": [
+          "application/json"
+        ]
+      }
     }
   },
   "definitions": {
-    "apiEncodeItem": {
+    "apiContent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "string",
+          "format": "byte"
+        },
+        "instruction": {
+          "type": "string"
+        }
+      }
+    },
+    "apiCreateIndexRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "index_type": {
+          "$ref": "#/definitions/apiIndexType"
+        },
+        "metric_type": {
+          "$ref": "#/definitions/apiMetricType"
+        },
+        "flat_params": {
+          "$ref": "#/definitions/apiFlatParams"
+        },
+        "embedding_model_name": {
+          "type": "string",
+          "title": "items that are used for the auto-generation of embeddings"
+        },
+        "embedding_model_class": {
+          "$ref": "#/definitions/apiModelClass"
+        }
+      }
+    },
+    "apiCreateIndexResponse": {
+      "type": "object"
+    },
+    "apiDeactivateIndexRequest": {
+      "type": "object"
+    },
+    "apiDeactivateIndexResponse": {
+      "type": "object"
+    },
+    "apiDeleteDataRequest": {
+      "type": "object",
+      "properties": {
+        "index_name": {
+          "type": "string"
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "apiDeleteDataResponse": {
+      "type": "object"
+    },
+    "apiDeleteIndexRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "apiDeleteIndexResponse": {
+      "type": "object"
+    },
+    "apiEmbedding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "vals": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "float"
+          }
+        }
+      }
+    },
+    "apiEncodeBatch": {
       "type": "object",
       "properties": {
         "model_class": {
@@ -122,33 +449,13 @@
           "description": "specific name of the model to apply the encoding transformation"
         },
         "text": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "repeated text to encode"
+          "$ref": "#/definitions/apiTextContent"
         },
-        "instructions": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "a list of instructions to pass to ```INSTRUCTOR``` based models"
+        "images": {
+          "$ref": "#/definitions/apiImageContent"
         },
-        "image": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "format": "byte"
-          },
-          "description": "repeated raw jpeg bytes"
-        },
-        "image_uri": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "description": "repeated uris to fetch image data from"
+        "image_uris": {
+          "$ref": "#/definitions/apiImageURIContent"
         }
       },
       "description": "Minimal encoding unit associating a piece of content [text, image, image_uri] with a selected model",
@@ -175,13 +482,14 @@
         ]
       },
       "properties": {
-        "data": {
+        "batches": {
           "type": "array",
           "items": {
             "type": "object",
-            "$ref": "#/definitions/apiEncodeItem"
+            "$ref": "#/definitions/apiEncodeBatch"
           },
-          "description": "repeated data items to generate encodings for"
+          "description": "repeated data items to generate encodings for",
+          "title": "batching occurs at the EncodeBundle level - to ensure proper optimization, one will need\nto ensure that for a given model, you provide _all_ the data that must be encoded by\nsaid model"
         }
       }
     },
@@ -215,6 +523,98 @@
         }
       }
     },
+    "apiFlatParams": {
+      "type": "object",
+      "properties": {
+        "dimensions": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "segment_size_kb": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "apiGetIndicesResponse": {
+      "type": "object"
+    },
+    "apiImageContent": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/apiContent"
+          }
+        }
+      }
+    },
+    "apiImageURIContent": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/apiContent"
+          }
+        }
+      }
+    },
+    "apiIndexDataRequest": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "string"
+        },
+        "index_name": {
+          "type": "string"
+        },
+        "no_embedds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "apiIndexDataResponse": {
+      "type": "object",
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/apiIndexResult"
+          }
+        }
+      }
+    },
+    "apiIndexResult": {
+      "type": "object",
+      "properties": {
+        "err_message": {
+          "type": "string"
+        },
+        "is_success": {
+          "type": "boolean"
+        },
+        "data_id": {
+          "type": "string"
+        }
+      }
+    },
+    "apiIndexType": {
+      "type": "string",
+      "enum": [
+        "IndexType_UNKNOWN",
+        "IndexType_FLAT",
+        "IndexType_DiskANNMem"
+      ],
+      "default": "IndexType_UNKNOWN"
+    },
     "apiInitializeModelRequest": {
       "type": "object",
       "properties": {
@@ -247,12 +647,24 @@
         }
       }
     },
+    "apiMetricType": {
+      "type": "string",
+      "enum": [
+        "MetricType_UNKNOWN",
+        "MetricType_COSINE",
+        "MetricType_L1",
+        "MetricType_L2",
+        "MetricType_HAMMING"
+      ],
+      "default": "MetricType_UNKNOWN"
+    },
     "apiModelClass": {
       "type": "string",
       "enum": [
         "ModelClass_Unknown",
         "ModelClass_CLIP",
-        "ModelClass_INSTRUCTOR"
+        "ModelClass_INSTRUCTOR",
+        "ModelClass_E5"
       ],
       "default": "ModelClass_Unknown"
     },
@@ -304,6 +716,114 @@
       "required": [
         "model_name"
       ]
+    },
+    "apiNearestNeighbor": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "distance": {
+          "type": "number",
+          "format": "float"
+        },
+        "document": {
+          "type": "string"
+        }
+      }
+    },
+    "apiSearchIndexRequest": {
+      "type": "object",
+      "properties": {
+        "index_name": {
+          "type": "string"
+        },
+        "queries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/apiSearchQuery"
+          }
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "oneof search_request {\n  // we cannot have a repeated field of JSON\n  Embeddings embeddings = 2;\n  string json = 3;\n}"
+        },
+        "weighting": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "float"
+          }
+        },
+        "per_search_limit": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "apiSearchIndexResponse": {
+      "type": "object",
+      "properties": {
+        "response": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/apiSearchResponse"
+          }
+        }
+      }
+    },
+    "apiSearchQuery": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "$ref": "#/definitions/apiContent",
+          "title": "Content content = 1;"
+        },
+        "image_uri": {
+          "$ref": "#/definitions/apiContent"
+        },
+        "image_bytes": {
+          "$ref": "#/definitions/apiContent"
+        },
+        "embedding": {
+          "$ref": "#/definitions/apiEmbedding"
+        }
+      }
+    },
+    "apiSearchResponse": {
+      "type": "object",
+      "properties": {
+        "search_id": {
+          "type": "string"
+        },
+        "nns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/apiNearestNeighbor"
+          }
+        },
+        "err_message": {
+          "type": "string"
+        }
+      }
+    },
+    "apiTextContent": {
+      "type": "object",
+      "properties": {
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/apiContent"
+          }
+        }
+      }
     },
     "protobufAny": {
       "type": "object",

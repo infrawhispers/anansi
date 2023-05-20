@@ -1,5 +1,5 @@
 gen-pb:
-	protoc -I$(GOOGLEAPIS_DIR) -I ./proto \
+	protoc -I proto/google -I ./proto \
 		--descriptor_set_out=runtime/api.pb --include_source_info \
 		--include_imports ./proto/api.proto 
 gen-docs:

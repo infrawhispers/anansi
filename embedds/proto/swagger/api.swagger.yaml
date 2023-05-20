@@ -14,23 +14,23 @@ tags:
 paths:
   /encode:
     post:
-      summary: encode
+      summary: Encode::Encode
       description: "Generates a vector representation of text or images using the
         specified embedding model. If the model does not exist or has not been
         loaded, an error will be returned for that particular data item.
         <br/><br/>It is recommended that multiple pieces of content are
         specified in a single request to take advantage of batching, especially
-        when running under with a GPU accelerated <a
+        when running with an attached <a
         href='https://onnxruntime.ai/docs/execution-providers/'
-        target='_blank'>ExecutionProvider.</a> Recommended sizes can be found at
-        <a href='/embedds/supported-models'
-        target='_blank'>embedds/model-details</a> and embedds will attempt to
-        split and batch encoding requests.<br/>----<br/><b>Not all models
-        support [text, instructions, image, image_uri]</b> a breakdown of
-        present support is outlined below:<ul><li>ModelClass_INSTRUCTOR -
-        requires: {text, instructions}</li><li>ModelClass_CLIP - any_of: {text,
-        image_uri, image}</li></ul>"
-      operationId: Api_Encode
+        target='_blank'>GPU.</a> Recommended sizes can be found at <a
+        href='/embedds/supported-models'
+        target='_blank'>embedds/model-details</a> and batching will be
+        automatically done.<br/>----<br/><b>Not all models support [text,
+        images, image_uris]</b> a breakdown of present support is outlined
+        below:<ul><li>ModelClass_INSTRUCTOR - requires: {text and
+        data.instruction}</li><li>ModelClass_CLIP - any_of: {text,
+        images}</li></ul>"
+      operationId: encode_
       responses:
         "200":
           description: A successful response.
@@ -52,20 +52,20 @@ paths:
         required: true
       tags:
         - Api
-  /initalize_models:
+  /encode/initialize:
     post:
-      summary: initialize_models
-      description: Intializes an onnx model, adding it to the pool of models available
-        for embedding generation. ONNX models are loaded from the folder
-        designated by ```EMBBEDDS_CACHE_FOLDER``` and it is recommended that
-        this folder be volume mounted if running within a container.<br/><br/>If
-        the model is missing, the server will attempt to download the
-        corresponding file from a remote source.<br/><br/>embedds must be
-        created with ```EMBEDDS_ALLOW_ADMIN=true``` as the unrestricted creation
-        of models can lead to resource starvation. If you are exposing the
-        process to non-trusted clients, we recommended that
+      summary: Encode::Initialize
+      description: Intializes an ONNX based embedding model, adding it to the pool of
+        models available for vector generation. ONNX models are loaded from the
+        folder designated by ```EMBBEDDS_CACHE_FOLDER``` and it is recommended
+        that this folder be volume mounted if running within a
+        container.<br/><br/>If the model is missing, the server will attempt to
+        download the corresponding file from a remote source.<br/><br/>embedds
+        must be created with ```EMBEDDS_ALLOW_ADMIN=true``` as the unrestricted
+        creation of models can lead to resource starvation. If you are exposing
+        the process to non-trusted clients, we recommended that
         ```EMBEDDS_ALLOW_ADMIN``` be set to false.
-      operationId: Api_InitializeModel
+      operationId: encode_initialize
       responses:
         "200":
           description: A successful response.
@@ -87,9 +87,223 @@ paths:
         required: true
       tags:
         - Api
+  /index:
+    get:
+      summary: Index::Get
+      description: "fetches all initialized and running indices "
+      operationId: index_get
+      responses:
+        "200":
+          description: A successful response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/apiGetIndicesResponse"
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/rpcStatus"
+      tags:
+        - Api
+    post:
+      summary: Index::Create
+      description: TODO(infrawhispers) - PENDING
+      operationId: index_create
+      responses:
+        "200":
+          description: A successful response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/apiCreateIndexResponse"
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/rpcStatus"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/apiCreateIndexRequest"
+        required: true
+      tags:
+        - Api
+  /index/deactivate:
+    post:
+      summary: Index::Deactivate
+      description: TODO(infrawhispers) - PENDING
+      operationId: index_deactivate
+      responses:
+        "200":
+          description: A successful response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/apiDeactivateIndexResponse"
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/rpcStatus"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/apiDeactivateIndexRequest"
+        required: true
+      tags:
+        - Api
+  /index/delete:
+    post:
+      summary: Index::Delete
+      operationId: index_delete
+      responses:
+        "200":
+          description: A successful response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/apiDeleteIndexResponse"
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/rpcStatus"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/apiDeleteIndexRequest"
+        required: true
+      tags:
+        - Api
+  /index/delete_data:
+    post:
+      summary: Index::DeleteData
+      description: "Deletes data from the given index based on the supplied ids "
+      operationId: index_delete_data
+      responses:
+        "200":
+          description: A successful response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/apiDeleteDataResponse"
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/rpcStatus"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/apiDeleteDataRequest"
+        required: true
+      tags:
+        - Api
+  /index/search:
+    post:
+      summary: Index::Search
+      description: TODO(infrawhispers) - PENDING
+      operationId: index_search
+      responses:
+        "200":
+          description: A successful response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/apiSearchIndexResponse"
+        default:
+          description: An unexpected error response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/rpcStatus"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/apiSearchIndexRequest"
+        required: true
+      tags:
+        - Api
 components:
   schemas:
-    apiEncodeItem:
+    apiContent:
+      type: object
+      properties:
+        id:
+          type: string
+        value:
+          type: string
+        bytes:
+          type: string
+          format: byte
+        instruction:
+          type: string
+    apiCreateIndexRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+        index_type:
+          $ref: "#/components/schemas/apiIndexType"
+        metric_type:
+          $ref: "#/components/schemas/apiMetricType"
+        flat_params:
+          $ref: "#/components/schemas/apiFlatParams"
+        embedding_model_name:
+          type: string
+          title: items that are used for the auto-generation of embeddings
+        embedding_model_class:
+          $ref: "#/components/schemas/apiModelClass"
+    apiCreateIndexResponse:
+      type: object
+    apiDeactivateIndexRequest:
+      type: object
+    apiDeactivateIndexResponse:
+      type: object
+    apiDeleteDataRequest:
+      type: object
+      properties:
+        index_name:
+          type: string
+        ids:
+          type: array
+          items:
+            type: string
+    apiDeleteDataResponse:
+      type: object
+    apiDeleteIndexRequest:
+      type: object
+      properties:
+        name:
+          type: string
+    apiDeleteIndexResponse:
+      type: object
+    apiEmbedding:
+      type: object
+      properties:
+        id:
+          type: string
+        vals:
+          type: array
+          items:
+            type: number
+            format: float
+    apiEncodeBatch:
       type: object
       properties:
         model_class:
@@ -98,26 +312,11 @@ components:
           type: string
           description: specific name of the model to apply the encoding transformation
         text:
-          type: array
-          items:
-            type: string
-          description: repeated text to encode
-        instructions:
-          type: array
-          items:
-            type: string
-          description: a list of instructions to pass to ```INSTRUCTOR``` based models
-        image:
-          type: array
-          items:
-            type: string
-            format: byte
-          description: repeated raw jpeg bytes
-        image_uri:
-          type: array
-          items:
-            type: string
-          description: repeated uris to fetch image data from
+          $ref: "#/components/schemas/apiTextContent"
+        images:
+          $ref: "#/components/schemas/apiImageContent"
+        image_uris:
+          $ref: "#/components/schemas/apiImageURIContent"
       description: Minimal encoding unit associating a piece of content [text, image,
         image_uri] with a selected model
       required:
@@ -135,11 +334,18 @@ components:
               - "Represent the Science title:"
               - "Represent the Magazine title:"
       properties:
-        data:
+        batches:
           type: array
           items:
-            $ref: "#/components/schemas/apiEncodeItem"
+            $ref: "#/components/schemas/apiEncodeBatch"
           description: repeated data items to generate encodings for
+          title: >-
+            batching occurs at the EncodeBundle level - to ensure proper
+            optimization, one will need
+
+            to ensure that for a given model, you provide _all_ the data that must be encoded by
+
+            said model
     apiEncodeResponse:
       type: object
       properties:
@@ -161,6 +367,65 @@ components:
             type: number
             format: float
           description: embedding representation of the the content
+    apiFlatParams:
+      type: object
+      properties:
+        dimensions:
+          type: integer
+          format: int64
+        segment_size_kb:
+          type: integer
+          format: int64
+    apiGetIndicesResponse:
+      type: object
+    apiImageContent:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/apiContent"
+    apiImageURIContent:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/apiContent"
+    apiIndexDataRequest:
+      type: object
+      properties:
+        data:
+          type: string
+        index_name:
+          type: string
+        no_embedds:
+          type: array
+          items:
+            type: string
+    apiIndexDataResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/apiIndexResult"
+    apiIndexResult:
+      type: object
+      properties:
+        err_message:
+          type: string
+        is_success:
+          type: boolean
+        data_id:
+          type: string
+    apiIndexType:
+      type: string
+      enum:
+        - IndexType_UNKNOWN
+        - IndexType_FLAT
+        - IndexType_DiskANNMem
+      default: IndexType_UNKNOWN
     apiInitializeModelRequest:
       type: object
       properties:
@@ -180,12 +445,22 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/apiModelInitResult"
+    apiMetricType:
+      type: string
+      enum:
+        - MetricType_UNKNOWN
+        - MetricType_COSINE
+        - MetricType_L1
+        - MetricType_L2
+        - MetricType_HAMMING
+      default: MetricType_UNKNOWN
     apiModelClass:
       type: string
       enum:
         - ModelClass_Unknown
         - ModelClass_CLIP
         - ModelClass_INSTRUCTOR
+        - ModelClass_E5
       default: ModelClass_Unknown
     apiModelInitResult:
       type: object
@@ -225,6 +500,79 @@ components:
       description: Configuration settings for the instantiaion of an onnx model
       required:
         - model_name
+    apiNearestNeighbor:
+      type: object
+      properties:
+        id:
+          type: string
+        distance:
+          type: number
+          format: float
+        document:
+          type: string
+    apiSearchIndexRequest:
+      type: object
+      properties:
+        index_name:
+          type: string
+        queries:
+          type: array
+          items:
+            $ref: "#/components/schemas/apiSearchQuery"
+        attributes:
+          type: array
+          items:
+            type: string
+          title: |-
+            oneof search_request {
+              // we cannot have a repeated field of JSON
+              Embeddings embeddings = 2;
+              string json = 3;
+            }
+        weighting:
+          type: object
+          additionalProperties:
+            type: number
+            format: float
+        per_search_limit:
+          type: integer
+          format: int64
+    apiSearchIndexResponse:
+      type: object
+      properties:
+        response:
+          type: array
+          items:
+            $ref: "#/components/schemas/apiSearchResponse"
+    apiSearchQuery:
+      type: object
+      properties:
+        text:
+          $ref: "#/components/schemas/apiContent"
+        image_uri:
+          $ref: "#/components/schemas/apiContent"
+        image_bytes:
+          $ref: "#/components/schemas/apiContent"
+        embedding:
+          $ref: "#/components/schemas/apiEmbedding"
+    apiSearchResponse:
+      type: object
+      properties:
+        search_id:
+          type: string
+        nns:
+          type: array
+          items:
+            $ref: "#/components/schemas/apiNearestNeighbor"
+        err_message:
+          type: string
+    apiTextContent:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/apiContent"
     protobufAny:
       type: object
       properties:

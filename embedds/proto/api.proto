@@ -299,13 +299,13 @@ service Api {
 
   rpc DeleteData(DeleteDataRequest) returns (DeleteDataResponse) {
     option (google.api.http) = {
-      post: "/delete"
+      post: "/index/delete_data"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "delete_data",
-      description:
-      "removes data from the given documents "
+      summary: "Index::DeleteData",
+      operation_id: "index_delete_data";
+      description: "Deletes data from the given index based on the supplied ids "
       consumes: "application/json";
       produces: "application/json";
     };
@@ -317,7 +317,8 @@ service Api {
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "index_data";
+      summary: "Index::Index";
+      operation_id: "index";
       description: 
       "indexes all data provided, optionally generating the necessary embeddings as needed "
       consumes: "application/json";
@@ -330,7 +331,8 @@ service Api {
       get: "/index"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "get_index";
+      summary: "Index::Get";
+      operation_id: "index_get";
       description: 
       "fetches all initialized and running indices "
       consumes: "application/json";
@@ -340,13 +342,12 @@ service Api {
 
   rpc DeleteIndex(DeleteIndexRequest) returns (DeleteIndexResponse) {
     option (google.api.http) = {
-      post: "/delete_index"
+      post: "/index/delete"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "deactivate_index";
-      description: 
-      "deletes a index - freeing the resources allocated to said index and removing any allocated disk resources. "
+      summary: "Index::Delete";
+      operation_id: "index_delete";
       consumes: "application/json";
       produces: "application/json";
     };
@@ -354,13 +355,13 @@ service Api {
 
   rpc DeactivateIndex(DeactivateIndexRequest) returns (DeactivateIndexResponse) {
     option (google.api.http) = {
-      post: "/deactivate_index"
+      post: "/index/deactivate"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "deactivate_index";
-      description: 
-      "Deactivates a index - freeing the resources allocated to said index and optionally writing all changes to disk. "
+      summary: "Index::Deactivate";
+      operation_id: "index_deactivate";
+      description: "TODO(infrawhispers) - PENDING";
       consumes: "application/json";
       produces: "application/json";
     };
@@ -368,13 +369,13 @@ service Api {
 
   rpc SearchIndex(SearchIndexRequest) returns (SearchIndexResponse) {
     option (google.api.http) = {
-      post: "/search_index"
+      post: "/index/search"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "search_index";
-      description:
-      ""
+      summary: "Index::Search";
+      operation_id: "index_search";
+      description: "TODO(infrawhispers) - PENDING";
       consumes: "application/json";
       produces: "application/json";
     };
@@ -382,13 +383,13 @@ service Api {
 
   rpc CreateIndex(CreateIndexRequest) returns (CreateIndexResponse) {
     option (google.api.http) = {
-      post: "/create_index"
+      post: "/index"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "create_index";
-      description: 
-      "Creates a index which allows for the efficient retrieval and storage of content based on their vector representations. "
+      summary: "Index::Create";
+      operation_id: "index_create";
+      description: "TODO(infrawhispers) - PENDING";
       consumes: "application/json";
       produces: "application/json";
     };
@@ -400,19 +401,20 @@ service Api {
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "encode";
+      summary: "Encode::Encode";
+      operation_id: "encode_";
       description:
         "Generates a vector representation of text or images using the specified embedding model. "
         "If the model does not exist or has not been loaded, an error will be returned for that particular data item. "
         "<br/><br/>It is recommended that multiple pieces of content are specified in a single request to take advantage of batching, "
-        "especially when running under with a GPU accelerated <a href='https://onnxruntime.ai/docs/execution-providers/' target='_blank'>ExecutionProvider.</a> "
-        "Recommended sizes can be found at <a href='/embedds/supported-models' target='_blank'>embedds/model-details</a> and embedds will "
-        "attempt to split and batch encoding requests."
+        "especially when running with an attached <a href='https://onnxruntime.ai/docs/execution-providers/' target='_blank'>GPU.</a> "
+        "Recommended sizes can be found at <a href='/embedds/supported-models' target='_blank'>embedds/model-details</a> and batching will "
+        "be automatically done."
         "<br/>----<br/>"
-        "<b>Not all models support [text, instructions, image, image_uri]</b> a breakdown of present support is outlined below:"
+        "<b>Not all models support [text, images, image_uris]</b> a breakdown of present support is outlined below:"
         "<ul>"
-        "<li>ModelClass_INSTRUCTOR - requires: {text, instructions}</li>"
-        "<li>ModelClass_CLIP - any_of: {text, image_uri, image}</li>"
+        "<li>ModelClass_INSTRUCTOR - requires: {text and data.instruction}</li>"
+        "<li>ModelClass_CLIP - any_of: {text, images}</li>"
         "</ul>"
         "";
       consumes: "application/json";
@@ -422,13 +424,14 @@ service Api {
 
   rpc InitializeModel(InitializeModelRequest) returns (InitializeModelResponse) {
     option (google.api.http) = {
-      post: "/initalize_models"
+      post: "/encode/initialize"
       body: "*"
     };
     option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
-      summary: "initialize_models";
+      summary: "Encode::Initialize";
+      operation_id: "encode_initialize";
       description:
-        "Intializes an onnx model, adding it to the pool of models available for embedding generation. "
+        "Intializes an ONNX based embedding model, adding it to the pool of models available for vector generation. "
         "ONNX models are loaded from the folder designated by ```EMBBEDDS_CACHE_FOLDER``` and it is recommended "
         "that this folder be volume mounted if running within a container."
         "<br/><br/>If the model is missing, the server will attempt to download the corresponding file from a remote source."

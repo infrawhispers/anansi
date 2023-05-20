@@ -26,7 +26,7 @@ Open Source Tooling for Applied Machine Learning
 
 # Introduction
 
-<p>Welcome to anansi! This documentation should get you up and running quickly while learning about the core features that will make anansi useful for your applications. If you are looking for the HTTP1 api spec, you might want to start <a href="/swagger-api/embedds/">here</a>.</p>
+<p>Welcome to anansi! This documentation should get you up and running quickly while learning about the core features that you can leverage. If you are looking for the HTTP1 api spec, you might want to start <a href="/swagger-api/embedds/">here</a>.</p>
 
 ## What is anansi?
 
