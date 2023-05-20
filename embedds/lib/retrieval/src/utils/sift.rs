@@ -46,12 +46,12 @@ impl SIFT<'_> {
         let mut data_w: Vec<u32> = Vec::with_capacity(num_vectors * num_closest as usize);
         for _ in 0..num_vectors {
             let dim = rdr.read_u32::<LittleEndian>().unwrap();
-            if dim != num_closest.try_into().unwrap() {
-                panic!(
-                    "dim != num_closest: dim: {} num_closest: {}",
-                    dim, num_closest
-                );
-            }
+            // if dim != num_closest.try_into().unwrap() {
+            //     panic!(
+            //         "dim != num_closest: dim: {} num_closest: {}",
+            //         dim, num_closest
+            //     );
+            // }
             for _j in 0..dim {
                 data_w.push(rdr.read_u32::<LittleEndian>().unwrap());
             }

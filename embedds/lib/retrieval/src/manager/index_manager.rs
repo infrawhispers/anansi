@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::ann::Points;
-use crate::ann::{ANNIndex, EId, Node};
+use crate::ann::{ANNIndex, ANNParams, EId, Node};
 use crate::diskannv1::DiskANNV1Index;
 use crate::flat_lite::FlatIndex as FlatLiteIndex;
 
@@ -114,6 +114,7 @@ impl IndexManager {
 
     pub fn create_index(
         &self,
+        index_name: &str,
         index_type: &str,
         metric_type: &str,
         index_params: &crate::ann::ANNParams,
@@ -229,7 +230,7 @@ impl IndexManager {
             }
         }
         // create the index and run the operations that we care about
-        let index = self.create_index(index_type, metric_type, index_params)?;
+        let index = self.create_index(index_name, index_type, metric_type, index_params)?;
         let mut indices_w = self.indices.write();
         indices_w.insert(index_name.to_string(), index);
         Ok(())

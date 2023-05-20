@@ -11,61 +11,63 @@
 </p>
 </div>
 <p>
-anansi is an open source project aimed at accelerating the adoption of ML applications by providing packaged solutions for content encoding and memory.
-official docker images are available here.
+anansi is a fully featured content vectorization system aimed at providing the latest
+advances in embedding generation, in-domain tuning and vector storage in an easy to use package.
 </p>
 
-### Project Overview
+### Core Features
+#### 🏎️ Performance
+* Rust implementation of [FreshDiskANN](https://arxiv.org/abs/2105.09613) with support for scalar quantization
+* Configurable RocksDB based storage engine
+* ONNX runtime support for CUDA accelerated embedding models
 
-<table>
-<thead>
-<tr>
-      <th>Project Name</th>
-      <th>Git Folder</th>
-      <th>Summary</th>
-      <th>Usage</th>
-</tr>
-</thead>
+#### 🗒️ Developer Experience
+* Build indices on unstructured data without worrying about whether or not it is text, image or video
+* Support for gRPC and HTTP clients
+* Single installation binary that can cross-compile to non-Linux targets
 
-<tbody>
-<tr style="vertical-align:top">
-<td>embedds 🛏</td>
-<td>
+#### 💡 Machine Learning
+* Utilize cutting-edge embeddings models that are listed on the [MTEB Leaderboard](https://huggingface.co/spaces/mteb/leaderboard)
+* Bin-pack model inference on the CPU or GPU, supporting request batching with little effort
+* Fine tune embedding generation with in-domain samples
 
-`/embedds`
+### Getting Started
 
-</td>
-<td>
-<p>turn-key generation of embeddings using models from the <a href="https://huggingface.co/spaces/mteb/leaderboard">MTEB Leaderboard</a>, with bin-packing and CPU + GPU support.</p>
-</td>
-
-<td>
-
+```bash
+docker pull infrawhispers/anansi:latest
+docker run --name anansi -it -p 50051:50051 -p 50052:50052 -v /.cache:/app/.cache infrawhispers/anansi:latest
 ```
-# brew install grpcurl
-grpcurl -d '{
-    "data":[{
+
+[1] standalone embedding generation using [INSTRUCTOR](https://github.com/HKUNLP/instructor-embedding)
+```bash
+curl \
+-X POST http://172.17.0.1:50052/encode \
+-H 'Content-Type: application/json' \
+-d '{
+    "batches":[{
         "model_name":"INSTRUCTOR_LARGE",
         "model_class":"ModelClass_INSTRUCTOR",
-        "text":[
-            "3D ActionSLAM: wearable person tracking ...",
-            "Inside Gohar World and the Fine, Fantastical Art"
-        ],
-        "instructions":[
-            "Represent the Science title:",
-            "Represent the Magazine title:"
-        ]
-    }]}' \
-    api.embeddings.getanansi.com:50051 api.Api/Encode
+        "text":{
+            "data": [
+                {
+                    "instruction": "Represent the Science title:",
+                    "value": "3D ActionSLAM: wearable person tracking ..."
+                },
+                {
+                    "instruction": "Represent the Nature title:",
+                    "value": "Inside Gohar World and the Fine, Fantastical Art"
+                }
+            ]
+        }
+    }]}
+'
 ```
 
-</td>
-</tr>
-</tbody>
-</table>
+---
+## Documentation
+We use docusaurus to generate our documenation, please either refer to the READMEs <a href="https://github.com/infrawhispers/anansi/tree/main/docs/docs/embedds/getting-started.md" target="_blank">here</a> or check out the documentation website.
 
 ---
-
 ### FAQ
 
 #### What's with the name?

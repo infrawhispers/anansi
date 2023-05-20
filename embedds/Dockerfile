@@ -8,8 +8,7 @@ RUN apt update && apt-get -y install  debian-keyring debian-archive-keyring apt-
 RUN apt update && apt-get -y install getenvoy-envoy
 
 
-FROM infrawhispers/anansi:base-rust-bullseye as planner
-# FROM rust:1.68-slim-buster as planner
+FROM infrawhispers/anansi:base-rust-1.69 as planner
 RUN apt update && apt-get -y install openssl build-essential libc6 \
     libc-bin musl-tools libssl-dev pkg-config python3 \
     protobuf-compiler
@@ -21,11 +20,10 @@ COPY . .
 RUN cargo chef prepare --recipe-path recipe.json
 
 # this allows us to do development in a repetable manner
-FROM infrawhispers/anansi:base-rust-bullseye as cacher
-FROM rust:1.68-slim-buster as planner
+FROM infrawhispers/anansi:base-rust-1.69 as cacher
 RUN apt update && apt-get clean && apt-get -y -f install openssl build-essential libc6 \
     libc-bin musl-tools libssl-dev libvips-dev pkg-config python3 \
-    protobuf-compiler supervisor
+    protobuf-compiler supervisor llvm-dev libclang-dev clang
 WORKDIR /app
 RUN cargo install cargo-chef
 COPY --from=planner /app/recipe.json recipe.json
