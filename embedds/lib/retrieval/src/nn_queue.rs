@@ -1,6 +1,7 @@
 use crate::ann;
 use std::ops::Index;
 
+#[derive(Debug)]
 pub struct NNPriorityQueue {
     size: usize,
     capacity: usize,
@@ -16,15 +17,6 @@ impl Index<usize> for NNPriorityQueue {
 }
 
 impl NNPriorityQueue {
-    pub fn print(&self) {
-        for i in 0..self.size {
-            print!(
-                "[id: {}, expanded: {}, distance: {}] ",
-                self.data[i].vid, self.data[i].flag, self.data[i].distance
-            );
-        }
-        println!("");
-    }
     pub fn new(capacity: usize) -> Self {
         NNPriorityQueue {
             size: 0,

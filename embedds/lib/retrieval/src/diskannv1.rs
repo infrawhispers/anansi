@@ -1169,9 +1169,6 @@ where
         wtr.write_u64::<LittleEndian>(num_points)?;
         wtr.write_u64::<LittleEndian>(dims)?;
         f.write(&wtr)?;
-        // chunk out arrays of size: dims then write them
-        // all out
-        let idx = 0;
         for arr in data.data.chunks(dims.try_into()?) {
             let mut wtr = vec![];
             for val in arr {
@@ -1179,11 +1176,6 @@ where
                 wtr.write_f32::<LittleEndian>(val)?;
             }
             f.write(&wtr).with_context(|| "error writing data chunk")?;
-            // printing out the data:
-            // if idx == 0
-            // f.write(&bincode::serialize(&arr).with_context(|| "error serializing data chunk")?)
-            //     .with_context(|| "error writing data chunk")?;
-            //     idx += 1
         }
         f.sync_all()
             .with_context(|| "unable to sync changes to filesystem")?;

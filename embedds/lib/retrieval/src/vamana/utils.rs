@@ -163,7 +163,7 @@ pub fn ref_load_aligned(filepath: &Path) -> anyhow::Result<BinAlignedLoad> {
 
 pub fn diskann_load_bin_generic(
     filepath: &Path,
-    offset: usize,
+    _offset: usize,
 ) -> anyhow::Result<(usize, usize, Vec<u8>)> {
     info!("opening bin file: {filepath:?}");
     let buf: Vec<u8> = std::fs::read(filepath).with_context(|| "unable to open the file")?;

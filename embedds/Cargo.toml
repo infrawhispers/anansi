@@ -68,5 +68,4 @@ lto = false
 members = [
     "lib/retrieval",
     "lib/optimizer",
-    "lib/utils",
 ]

@@ -38,6 +38,46 @@ pub struct Node {
     nnbrs: Vec<usize>, // nearest neighbors to this node, based on the specified metric calculation
     coords: AlignedDataStore<f32>, // full representation of the node in n-dimensional space
 }
+/*
+ let mut n_hops: u64 = 0;
+        let mut n_cmps: u64 = 0;
+        let mut cmps: u64 = 0;
+        let mut hops: u32 = 0;
+        let mut num_ios: u64 = 0;
+        let mut num_4kb: u64 = 0;
+        let mut n_cache_hits: u64 = 0;
+*/
+/// tracks the behavior of a single cached_beam_search call
+/// which in turn allows the Index to update the population
+/// of `Node` that are held fully in memory
+#[derive(Debug)]
+pub struct CachedBeamSearchStats {
+    /// comparisons made using full metric::compare(..) calls
+    num_cmps: u64,
+    /// comparisons that are made using pq
+    num_pq_cmps: u64,
+    /// nodes that are considered along the frontier
+    num_frontier_hops: u64,
+    /// number of frontier sets that are considered
+    num_hops: u64,
+    /// disk io calls made
+    num_ios: u64,
+    /// nodes that are pulled from the in-memory cache
+    num_cache_hits: u64,
+}
+
+impl CachedBeamSearchStats {
+    fn new() -> Self {
+        return CachedBeamSearchStats {
+            num_cmps: 0u64,
+            num_pq_cmps: 0u64,
+            num_frontier_hops: 0u64,
+            num_hops: 0u64,
+            num_ios: 0u64,
+            num_cache_hits: 0u64,
+        };
+    }
+}
 
 pub struct PQFlashIndex {
     data_dim: usize,
@@ -117,7 +157,7 @@ impl PQFlashIndex {
             "loaded PQ centorids and in-memory compressed vectors. dims: {}, n_chunks: {}, n_points: {}",
             table.ndims, n_chunks, num_points
         );
-        let mut index_metadata = index_metadata_fr_file(&folder.join("disk-metadata.bin"))?;
+        let index_metadata = index_metadata_fr_file(&folder.join("disk-metadata.bin"))?;
         let max_degree =
             ((index_metadata.max_node_len - disk_bytes_per_point) / std::mem::size_of::<u64>()) - 1;
         let thread_data = SSDThreadData::new(aligned_dim, VISITED_RESERVE_DEFAULT)
@@ -134,7 +174,6 @@ impl PQFlashIndex {
             &medoids,
             data_dim,
             aligned_dim,
-            disk_bytes_per_point,
             index_metadata.nnodes_per_sector,
             index_metadata.max_node_len,
             &reader,
@@ -158,7 +197,7 @@ impl PQFlashIndex {
             pq_table: table,
             index_metadata: index_metadata,
             reader: reader,
-            num_medoids: 1,
+            num_medoids: num_medoids,
             medoids: medoids,
             centroids: centroids,
             thread_data: Arc::new(RwLock::new(thread_data)),
@@ -288,7 +327,7 @@ impl PQFlashIndex {
         num_nodes_to_cache: usize,
     ) -> anyhow::Result<Vec<usize>> {
         let samples = ref_load_aligned(filepath).with_context(|| "unable to load sample points")?;
-        let mut visited_nodes_cnt: Arc<RwLock<HashMap<usize, AtomicU64>>> =
+        let visited_nodes_cnt: Arc<RwLock<HashMap<usize, AtomicU64>>> =
             Arc::new(RwLock::new(HashMap::new()));
         // run cached_beam_search across the values that are provided while
         // keeping track of the values that we have
@@ -330,7 +369,7 @@ impl PQFlashIndex {
         l_search: usize,
         beam_width: usize,
         visited_nodes_cnter: Option<Arc<RwLock<HashMap<usize, AtomicU64>>>>,
-    ) -> anyhow::Result<Vec<crate::ann::Node>> {
+    ) -> anyhow::Result<(Vec<crate::ann::Node>, CachedBeamSearchStats)> {
         // info!("disk_bytes_per_point: {}", self.disk_bytes_per_point);
         // info!("search_arr: {:?}", arr);
         if beam_width > MAX_N_SECTOR_READS {
@@ -382,7 +421,6 @@ impl PQFlashIndex {
         full_retset.clear();
 
         let best_medoid: usize = self.medoids[0];
-        let best_dist: f32 = std::f32::MAX;
         if self.medoids.len() != 1 {
             bail!("we do not support multiple medoids at the moment")
         }
@@ -395,14 +433,8 @@ impl PQFlashIndex {
         });
         visited.insert(best_medoid);
 
-        let mut n_hops: u64 = 0;
-        let mut n_cmps: u64 = 0;
-        let mut cmps: u64 = 0;
-        let mut hops: u32 = 0;
-        let mut num_ios: u64 = 0;
-        let mut num_4kb: u64 = 0;
-        let mut n_cache_hits: u64 = 0;
-
+        // tracking of all data during the beam_search process
+        let mut stats: CachedBeamSearchStats = CachedBeamSearchStats::new();
         // cleared every iteration
         let mut frontiers: Vec<usize> = Vec::with_capacity(2 * beam_width);
         let mut frontier_nhoods: Vec<(usize, usize)> = Vec::with_capacity(2 * beam_width);
@@ -416,7 +448,7 @@ impl PQFlashIndex {
 
         // maybe we should raise this?
         let nhood_cache = self.nhood_cache.read();
-        while retset.has_unexpanded_node() && num_ios < io_limit {
+        while retset.has_unexpanded_node() && stats.num_ios < io_limit {
             frontiers.clear();
             frontier_nhoods.clear();
             frontier_read_reqs.clear();
@@ -433,7 +465,7 @@ impl PQFlashIndex {
                 match nhood_cache.get(&nbr.vid) {
                     Some(res) => {
                         cached_nhoods.push((nbr.vid, res.clone()));
-                        n_cache_hits += 1;
+                        stats.num_cache_hits += 1;
                     }
                     None => {
                         frontiers.push(nbr.vid);
@@ -465,14 +497,13 @@ impl PQFlashIndex {
             }
             // read nhoods of frontier ids
             if !frontiers.is_empty() {
-                n_hops += 1;
-                let num_chunks = 128;
-                // info!("data_len: {}, num_chunks: {num_chunks:?}");
+                stats.num_frontier_hops += 1;
                 let mut frontier_read_reqs_1: Vec<AlignedRead> = Vec::with_capacity(2 * beam_width);
                 let mut res = Vec::new();
                 for chunk in sector_scratch.data.chunks_mut(crate::vamana::SECTOR_LEN) {
                     res.push(chunk);
                 }
+                let num_chunks = res.len();
                 for (idx, id) in frontiers.iter().enumerate() {
                     frontier_nhoods.push((*id, num_chunks - 1 - idx));
                     let buf = res.pop().unwrap();
@@ -482,15 +513,14 @@ impl PQFlashIndex {
                         offset: (node_sector_no(*id, self.index_metadata.nnodes_per_sector)
                             * crate::vamana::SECTOR_LEN) as u64,
                     });
-                    num_ios += 1;
-                    num_4kb += 1;
+                    stats.num_ios += 1;
                 }
                 self.reader
                     .read(&mut frontier_read_reqs_1)
                     .with_context(|| "unable to read data from file")?;
             }
             // process cached nhoods
-            for (id, nbr) in &cached_nhoods {
+            for (_, nbr) in &cached_nhoods {
                 let cur_expanded_dist = crate::metric::MetricL2::compare(&nbr.coords.data[..], arr);
                 full_retset.push(crate::ann::Node {
                     eid: crate::ann::EId([0u8; 16]),
@@ -502,12 +532,12 @@ impl PQFlashIndex {
                 // compute node_nbrs <-> query dists in PQ space
                 // info!("the neighbors: {:?}", nbr.nnbrs);
                 compute_dists(&nbr.nnbrs, dist_scratch);
-                n_cmps += nbr.nnbrs.len() as u64;
+                stats.num_pq_cmps += nbr.nnbrs.len() as u64;
                 for (idx, nnbr) in nbr.nnbrs.iter().enumerate() {
                     if visited.insert(*nnbr) {
                         // TODO(infrawhispers) handle the point being in our set of _dummy_points (i.e the frozen location)
                         // TOOD(infrawhispers) handle the point not having one of the labels we are looking for
-                        cmps += 1;
+                        stats.num_cmps += 1;
                         retset.insert(crate::ann::INode {
                             vid: *nnbr,
                             distance: dist_scratch[idx],
@@ -548,14 +578,14 @@ impl PQFlashIndex {
                     distance: dist,
                 });
                 compute_dists(&nnbrs, dist_scratch);
+                stats.num_pq_cmps += nnbrs.len() as u64;
                 // process prefetch-ed nhood
                 for (idx, nnbr) in nnbrs.iter().enumerate() {
                     if visited.insert(*nnbr) {
                         // info!("adding to retset: {}",*nnbr);
                         // TODO(infrawhispers) handle the point being in our set of _dummy_points (i.e the frozen location)
                         // TOOD(infrawhispers) handle the point not having one of the labels we are looking for
-                        cmps += 1;
-                        n_cmps += 1;
+                        stats.num_cmps += 1;
                         retset.insert(crate::ann::INode {
                             vid: *nnbr,
                             distance: dist_scratch[idx],
@@ -564,7 +594,7 @@ impl PQFlashIndex {
                     }
                 }
             }
-            hops += 1;
+            stats.num_hops += 1;
         }
         full_retset.sort();
         let mut result: Vec<crate::ann::Node> = Vec::with_capacity(k);
@@ -580,14 +610,13 @@ impl PQFlashIndex {
                 None => break,
             }
         }
-        Ok(result)
+        Ok((result, stats))
     }
 
     pub fn use_medoids_data_as_centroids(
         medoids: &[usize],
         data_dim: usize,
         aligned_dim: usize,
-        disk_bytes_per_point: usize,
         nnodes_per_sector: usize,
         max_node_len: usize,
         reader: &Reader,

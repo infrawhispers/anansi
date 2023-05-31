@@ -476,7 +476,6 @@ pub fn pq_dist_lookup(
     }
     dists_out.fill(0.0);
     for chunk in 0..pq_nchunks {
-        let chunk_dists_loc: usize = 256 * chunk;
         #[cfg(all(target_feature = "x86",))]
         if (chunk < pq_nchunks - 1) {
             core::arch::x86::_mm_prefetch(

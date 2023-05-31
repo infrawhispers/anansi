@@ -261,8 +261,6 @@ where
             final_index_ram_limit,
             params.index_ram_limit
         );
-
-        // let p_val: f32 = (MAX_PQ_TRAINING_SET_SIZE) / (params.num_points as f32);
         let mut num_pq_chunks: usize =
             (final_index_ram_limit / (params.num_points as f32)) as usize;
         num_pq_chunks = if num_pq_chunks <= 0 { 1 } else { num_pq_chunks };
@@ -354,8 +352,8 @@ mod test {
             .expect("unable to fetch query vectors from disk");
 
         let mut eids: Vec<crate::ann::EId> =
-            vec![crate::ann::EId([0u8; 16]); learn_vectors.len() / 128];
-        for i in 0..learn_vectors.len() / 128 {
+            vec![crate::ann::EId([0u8; 16]); learn_vectors.len() / dims];
+        for i in 0..learn_vectors.len() / dims {
             let mut eid: crate::ann::EId = crate::ann::EId([0u8; 16]);
             BigEndian::write_uint(
                 &mut eid.0,
