@@ -87,9 +87,9 @@ where
         }
         return final_index_ram_limit * 1024.0 * 1024.0 * 1024.0;
     }
+
     /// writes out the vamana index to disk
     fn create_disk_layout(&self, path: &std::path::Path) -> anyhow::Result<()> {
-        // let dims: usize = 128;
         let mut graph_filepath = PathBuf::from(path);
         graph_filepath.push("index-in-mem.graph");
         let mut f = File::open(graph_filepath)?;
@@ -97,9 +97,11 @@ where
         let mut data_filepath = PathBuf::from(path);
         data_filepath.push("index-in-mem.data");
         let mut d = File::open(data_filepath)?;
-        let num_points = d.read_u64::<LittleEndian>()?;
+
+        let num_points = d.read_u64::<LittleEndian>()? as usize;
         let dims = d.read_u64::<LittleEndian>()? as usize;
-        info!("fn: [create_disk_layout] num_points: {num_points} dims: {dims}");
+
+        info!("[create_disk_layout] generating with num_points: {num_points} dims: {dims}");
         let mut metadata_filpath = PathBuf::from(path);
         metadata_filpath.push("disk-metadata.bin");
         if metadata_filpath.exists() {
@@ -128,18 +130,18 @@ where
         let start = f.read_u64::<LittleEndian>()?;
         let num_frozen_pts = f.read_u64::<LittleEndian>()?;
 
-        info!("graph.metadata: graph_size: {index_size} | max_degree: {max_degree} | start: {start} | num_frozen_pts: {num_frozen_pts}");
+        info!("[create_disk_layout] source graph metadata: graph_size: {index_size} | max_degree: {max_degree} | start: {start} | num_frozen_pts: {num_frozen_pts}");
         let vamana_frozen_loc = start;
         let max_node_len: u64 = ((max_degree + 1) * (std::mem::size_of::<u64>() as u64))
             + (dims as u64 * (std::mem::size_of::<f32>() as u64));
         let nnodes_per_sector = SECTOR_LEN / (max_node_len as usize);
-        info!("start: {start} | max_node_len: {max_node_len} bytes | nnodes_per_sector: {nnodes_per_sector}");
-
-        let n_sectors = crate::vamana::utils::round_up(num_points.try_into()?, nnodes_per_sector)
+        let num_sectors = crate::vamana::utils::round_up(num_points.try_into()?, nnodes_per_sector)
             / nnodes_per_sector;
 
+        info!("[create_disk_layout] layout constraints max_node_len: {max_node_len} bytes | nnodes_per_sector: {nnodes_per_sector} | num_sectors: {num_sectors}");
+
         let mut output_file_meta = vec![];
-        output_file_meta.write_u64::<LittleEndian>(num_points)?;
+        output_file_meta.write_u64::<LittleEndian>(num_points.try_into()?)?;
         output_file_meta.write_u64::<LittleEndian>(dims.try_into()?)?;
         output_file_meta.write_u64::<LittleEndian>(start)?;
         output_file_meta.write_u64::<LittleEndian>(max_node_len)?;
@@ -150,68 +152,39 @@ where
 
         let mut curr_node_id = 0;
         let mut curr_node_coords = vec![0; std::mem::size_of::<f32>() * dims];
-        info!("n_sectors: {n_sectors}");
+
         let mut sector_buf: Vec<u8> = vec![0u8; SECTOR_LEN];
         let mut node_buf: Vec<u8> = vec![0u8; max_node_len.try_into()?];
         // node_buf is organized in the following manner:
         // [0..dims]----[num_nbrs]---[nhood] which translates to:
         // [the f32 or u8 represenation of the point][number of nearest neighbors][neighborhood]
         o.write(&sector_buf)?;
-        let nnbrs_idx_start = dims * std::mem::size_of::<f32>();
-        let nnbrs_idx_end = nnbrs_idx_start + std::mem::size_of::<u64>();
-        let nhood_start = nnbrs_idx_end;
+        let num_nbrs_idx_start = dims * std::mem::size_of::<f32>();
+        let num_nbrs_idx_end = num_nbrs_idx_start + std::mem::size_of::<u64>();
+        let nnbrs_start = num_nbrs_idx_end;
 
-        for sector in 0..n_sectors {
+        for sector in 0..num_sectors {
             if sector % 100000 == 0 {
-                info!("sector number: {sector}");
+                info!("[create_disk_layout] working on sector number: {sector}");
             }
-            //  memset(sector_buf.get(), 0, SECTOR_LEN);
-            for v in &mut sector_buf {
-                *v = 0u8;
-            }
-            //  for (uint64_t sector_node_id = 0; sector_node_id < nnodes_per_sector && cur_node_id < npts_64; sector_node_id++)
+            sector_buf.fill(0u8);
             let mut sector_node_id = 0;
             while sector_node_id < nnodes_per_sector && curr_node_id < num_points {
-                // info!("current_node_id: {}", curr_node_id);
-                // memset(node_buf.get(), 0, max_node_len);
                 for v in &mut node_buf {
                     *v = 0u8;
                 }
-                // let nnbrs = f.read_u64::<LittleEndian>()?;
-                f.read_exact(&mut node_buf[nnbrs_idx_start..nnbrs_idx_end])?;
-                let nnbrs = LittleEndian::read_u64(&node_buf[nnbrs_idx_start..nnbrs_idx_end]);
-                // if nnbrs == 0 {
-                //     panic!("this ain't working!");
+                f.read_exact(&mut node_buf[num_nbrs_idx_start..num_nbrs_idx_end])?;
+                let num_nnbrs =
+                    LittleEndian::read_u64(&node_buf[num_nbrs_idx_start..num_nbrs_idx_end]);
+                // if nnbrs > max_degree || nnbrs == 0 {
+                //     info!("unexpectedly ")
                 // }
-                if nnbrs > max_degree {
-                    panic!("this ain't working!");
-                }
-                if curr_node_id == 25000 {
-                    info!("num neighbors for: {curr_node_id}: {nnbrs}");
-                }
-
                 f.read_exact(
-                    &mut node_buf
-                        [nhood_start..nhood_start + nnbrs as usize * std::mem::size_of::<u64>()],
+                    &mut node_buf[nnbrs_start
+                        ..nnbrs_start + num_nnbrs as usize * std::mem::size_of::<u64>()],
                 )?;
                 d.read_exact(&mut curr_node_coords[..])?;
                 node_buf[..curr_node_coords.len()].copy_from_slice(&curr_node_coords);
-                // if curr_node_id == 25000 || curr_node_id == 15322 || curr_node_id == 17 {
-                //     unsafe {
-                //         let ptr = curr_node_coords.as_ptr() as *mut f32;
-                //         let slice: &[f32] = std::slice::from_raw_parts(ptr, dims);
-                //         info!("id: {curr_node_id} | point: {:?}", slice);
-                //         let ptr_usize =
-                //             (node_buf.as_ptr() as *mut u8).add(nhood_start) as *const usize;
-                //         let slice_points: &[usize] =
-                //             std::slice::from_raw_parts(ptr_usize, nnbrs.try_into()?);
-                //         info!(
-                //             "id: {curr_node_id} cnt:{} neighbors: {:?}",
-                //             slice_points.len(),
-                //             slice_points
-                //         );
-                //     }
-                // }
                 let sector_start = sector_node_id * (max_node_len as usize);
                 sector_buf[sector_start..sector_start + node_buf.len()].copy_from_slice(&node_buf);
                 sector_node_id += 1;
@@ -222,8 +195,7 @@ where
         o.sync_all()?;
 
         m.write(&output_file_meta)?;
-        m.sync_all()?;
-        Ok(())
+        Ok(m.sync_all()?)
     }
 
     fn build_merged_vamana_index(
@@ -261,17 +233,6 @@ where
                     .with_context(|| "unable to create the in-memory index")?;
             idx.insert(eids, crate::ann::Points::Values { vals: data })
                 .with_context(|| "unable to insert points into the in-memory index")?;
-            // info!("vid 17: {:?}", &data[17 * 128..17 * 128 + 128]);
-            // TODO(infrawhispers) - remove this check!
-            // let samples = crate::vamana::utils::ref_load_aligned(&Path::new("../../../../public/DiskANN/build/data/siftsmall/disk_index_sift_learn_R32_L50_A1.2_sample_data.bin"))
-            //     .with_context(|| "unable to load sample points")?;
-            // for i in 0..1 {
-            //     let sample = &samples.arr.data
-            //         [i * samples.aligned_dim..i * samples.aligned_dim + samples.aligned_dim];
-            //     let res = idx.search(crate::ann::Points::Values { vals: sample }, 1)?;
-            //     info!("[build_merged_vamana_index] search_query: {:?}", sample);
-            //     info!("[build_merged_vamana_index] result: {res:?}");
-            // }
             idx.save_ref_bin(Path::new(".disk"))
                 .with_context(|| "unable to save in-memory index to disk")?;
         } else {
@@ -291,11 +252,6 @@ where
         eids: &[crate::ann::EId],
         base_vectors: &[f32],
     ) -> anyhow::Result<()> {
-        // let disk_pq_dims: usize = 0;
-        // let build_pq_bytes: usize = 0;
-        // let use_disk_pq: bool = false;
-        // let reorder_data: bool = false;
-
         let final_index_ram_limit =
             Index::<TMetric>::get_memory_budget(params.indexing_mem_limit as f32);
         info!(
@@ -324,15 +280,17 @@ where
             "compressing {} dimensional data into {} bytes per vector",
             params.dims, num_pq_chunks
         );
-        // let quantize_timer = Instant::now();
-        // self.pq
-        //     .generate_quantized_data(&base_vectors, num_pq_chunks, false)
-        //     .with_context(|| "unable to generate the quantized data")?;
-        // info!("time for quantized_data {:?}", quantize_timer.elapsed());
+        let quantize_timer = Instant::now();
+        self.pq
+            .generate_quantized_data(&Path::new(".disk"), &base_vectors, num_pq_chunks, false)
+            .with_context(|| "unable to generate the quantized data")?;
+        info!("time for quantized_data {:?}", quantize_timer.elapsed());
+
         let merged_vamana = Instant::now();
         self.build_merged_vamana_index(params, eids, base_vectors)
             .with_context(|| "unable to build the merged vamana index")?;
         info!("time for merged_vamana: {:?}", merged_vamana.elapsed());
+
         let disk_layout = Instant::now();
         self.create_disk_layout(Path::new(".disk"))?;
         info!("time for disk_layout: {:?}", disk_layout.elapsed());

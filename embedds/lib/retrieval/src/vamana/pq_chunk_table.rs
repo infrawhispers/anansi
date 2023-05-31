@@ -1,7 +1,9 @@
-use crate::vamana::pq::PQResult;
-use anyhow::bail;
+use std::io::Read;
 use std::path::Path;
-use tracing::info;
+
+use anyhow::{bail, Context};
+
+use crate::vamana::pq::PQResult;
 
 pub struct FixedChunkPQTable {
     pub ndims: usize,
@@ -34,6 +36,53 @@ impl FixedChunkPQTable {
         // TOOD(infrawhispers) - we will need to add some code to
         // handle rotation by doing something of the form:
         // tmp[d] += query_vec[d1] * rotmat_tr[d1 * ndims + d];
+    }
+
+    pub fn fr_pivots_bin(folder_path: &Path, num_chunks: usize) -> anyhow::Result<Self> {
+        let mut f = std::fs::File::open(folder_path.join("pq_pivots.bin"))
+            .with_context(|| "unable to open pq_pivots")?;
+        let mut buf: Vec<u8> = Vec::new();
+        f.read_to_end(&mut buf)?;
+        let res: PQResult = rmp_serde::from_slice(&buf)?;
+
+        //
+        let nr = res.pivots.len() / res.pivots_dims;
+        if nr != crate::vamana::pq::NUM_PQ_CENTROIDS {
+            bail!(
+                "error reading pq_pivots file, got: num_centers: {nr} expected: {}",
+                crate::vamana::pq::NUM_PQ_CENTROIDS
+            )
+        }
+        let ndims: usize = res.pivots_dims;
+        if ndims != res.centroid.len() {
+            bail!(
+                "error reading pq_pivots file, got: num_centroids: {} expected: {} ",
+                res.centroid.len(),
+                ndims
+            )
+        }
+        if res.chunks.len() != num_chunks + 1 && num_chunks != 0 {
+            bail!(
+                "error reading pq_pivots file, got: num_chunks: {}, expected: {}",
+                res.chunks.len(),
+                num_chunks + 1
+            )
+        }
+        let n_chunks = res.chunks.len() - 1;
+        let mut tables_tr: Vec<f32> = vec![0.0; ndims * 256];
+        for i in 0..256 {
+            for j in 0..ndims {
+                tables_tr[j * 256 + i] = res.pivots[i * ndims + j]
+            }
+        }
+        Ok(FixedChunkPQTable {
+            ndims: ndims,
+            n_chunks: n_chunks,
+            chunks: res.chunks,
+            tables: res.pivots,
+            tables_tr: tables_tr,
+            centroids: res.centroid,
+        })
     }
 
     pub fn load_pq_centroid_bin(path: &Path, num_chunks: usize) -> anyhow::Result<Self> {

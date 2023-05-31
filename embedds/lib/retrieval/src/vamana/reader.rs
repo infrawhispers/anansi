@@ -1,14 +1,10 @@
-use std::os::unix::prelude::FileExt;
+use std::path::Path;
 use std::sync::Arc;
 
-use std::path::Path;
-use tokio::task::JoinSet;
-
 use anyhow::{bail, Context};
+use futures::future::join_all;
 use tokio_uring::fs::File;
 use tracing::info;
-
-use futures::future::{self, join_all, try_join_all};
 
 pub struct AlignedRead<'a> {
     pub offset: u64,
@@ -52,8 +48,8 @@ impl Reader {
         self.file = Some(file);
         Ok(())
     }
-    /// submits n requests to the kernel in order to run the read operations, this is expected
-    /// to
+
+    /// submits n requests to the kernel in order to run the read operations
     pub fn read(&self, read_reqs: &mut [AlignedRead]) -> anyhow::Result<()> {
         self.runtime.block_on(async move {
             let file = self
@@ -65,12 +61,6 @@ impl Reader {
                 .map(|read_req| async {
                     let buf: Vec<u8> = vec![0u8; read_req.buf.len()];
                     let (res, buf) = file.read_at(buf, read_req.offset).await;
-                    // println!("this is done: offset is: {}", );
-                    // println!(
-                    //     "offset: {}, read {} bytes",
-                    //     read_req.offset,
-                    //     read_req.buf.len()
-                    // );
                     let n = res?;
                     if n != read_req.buf.len() {
                         bail!(

@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::Read;
-use std::io::Write;
+use std::io::{Cursor, Read, Write};
 use std::marker::PhantomData;
 use std::path::Path;
 
-use anyhow::Context;
+use anyhow::{bail, Context};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use parking_lot::Mutex;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use tracing::info;
@@ -42,6 +43,7 @@ impl PQScratch {
 pub struct PQResult {
     pub chunks: Vec<usize>,
     pub pivots: Vec<f32>,
+    // pub pivots_num_centers: u64,
     pub pivots_dims: usize,
     pub centroid: Vec<f32>,
 }
@@ -77,11 +79,11 @@ impl PQResult {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct PQMetadata {
-    pub num_points: u32,
-    pub num_pq_chunks: u32,
-}
+// #[derive(Serialize, Deserialize)]
+// pub struct PQMetadata {
+//     pub num_points: u32,
+//     pub num_pq_chunks: u32,
+// }
 
 pub struct PQ<TMetric> {
     metric: PhantomData<TMetric>,
@@ -110,6 +112,7 @@ where
 
     pub fn generate_pq_pivots(
         &self,
+        folder_path: &Path,
         data: &[f32],
         dim: usize,
         num_centers: usize,
@@ -120,12 +123,12 @@ where
         if num_pq_chunks > dim {
             panic!("num chunks: {} > dimension: {}", num_pq_chunks, dim);
         }
-        if std::path::Path::new(".disk/pq_pivots.bin").exists() {
+        if folder_path.join("pq_pivots.bin").exists() {
             // let mut f = std::fs::File::open(".disk/pq_pivots.bin")?;
-            // let mut buf: Vec<u8> = Vec::new();
-            // f.read_to_end(&mut buf)?;
-            // _ = rmp_serde::from_slice(&buf)?;
-            info!("found existing product quantization record:");
+            //     // let mut buf: Vec<u8> = Vec::new();
+            //     // f.read_to_end(&mut buf)?;
+            //     // _ = rmp_serde::from_slice(&buf)?;
+            //     info!("found existing product quantization record:");
             return Ok(());
         }
 
@@ -191,7 +194,7 @@ where
         }
         chunk_offsets.push(dim);
         let full_pivot_data: Mutex<Vec<f32>> = Mutex::new(vec![0.0; num_centers * dim]);
-        (0..num_pq_chunks).into_iter().for_each(|i| {
+        (0..num_pq_chunks).into_par_iter().for_each(|i| {
             let curr_chunk_size = chunk_offsets[i + 1] - chunk_offsets[i];
             if curr_chunk_size == 0 {
                 return;
@@ -205,7 +208,7 @@ where
             );
             // let closest_center: Vec<usize> = vec![0; num_train];
             info!(
-                "processing chunk {} with dims: ({}, {})",
+                "processing chunk {} with dims: ({}, {}), kmeans_args => num_points: {num_train} | dims: {curr_chunk_size}",
                 i,
                 chunk_offsets[i],
                 chunk_offsets[i + 1]
@@ -217,12 +220,6 @@ where
                 let data_end = data_start + curr_chunk_size;
                 curr_data[curr_start..curr_end].copy_from_slice(&train_data[data_start..data_end]);
             }
-            info!(
-                "kmeans args: {} num_points: {} | dim: {} ",
-                curr_data.len(),
-                num_train,
-                curr_chunk_size
-            );
             let kmean = kmeans::KMeans::new(curr_data, num_train, curr_chunk_size);
             let result = kmean.kmeans_lloyd(
                 num_centers,
@@ -235,72 +232,112 @@ where
                 let data_end = data_start + curr_chunk_size;
                 let result_start = j * curr_chunk_size;
                 let result_end = result_start + curr_chunk_size;
-                // info!("result: {:?}", &result.centroids[result_start..result_end]);
                 full_pivot_data.lock()[data_start..data_end]
                     .copy_from_slice(&result.centroids[result_start..result_end]);
             }
         });
+        // info!("num_centers: {num_centers}, pivots_len: {}, pivots_dims: {}", num_centers, dim);
         let res: PQResult = PQResult {
             chunks: chunk_offsets,
             pivots: full_pivot_data.lock().to_vec(),
-            pivots_dims: 0,
+            // pivots_num_centers: num_centers as u64,
+            pivots_dims: dim,
             centroid: centroid,
         };
-        let res_b = rmp_serde::to_vec(&res)?;
-        fs::write(".disk/pq_pivots.bin", res_b)?;
+        let res_b =
+            rmp_serde::to_vec(&res).with_context(|| "unable to serialize the PQResult obj")?;
+        fs::write(folder_path.join("pq_pivots.bin"), res_b)
+            .with_context(|| "unable to write pq_pivots to disk")?;
+        info!("done writing the pq_pivots file");
         Ok(())
+    }
+
+    pub fn load_fr_compressed(folder_path: &Path) -> anyhow::Result<(usize, usize, Vec<u8>)> {
+        let buf: Vec<u8> = std::fs::read(folder_path.join("pq_compressed.bin"))
+            .with_context(|| "unable to open the file")?;
+        let mut cursor = Cursor::new(buf);
+        let num_points = cursor.read_u32::<LittleEndian>()?.try_into()?;
+        let dims = cursor.read_u32::<LittleEndian>()?.try_into()?;
+        let mut data: Vec<u8> = vec![0u8; num_points * dims];
+        for idx in 0..num_points * dims {
+            data[idx as usize] = cursor.read_u32::<LittleEndian>()? as u8;
+        }
+        Ok((num_points, dims, data))
     }
 
     pub fn generate_pq_data_from_pivots(
         &self,
+        folder_path: &Path,
         data: &[f32],
+        data_dim: usize,
         num_centers: usize,
         num_pq_chunks: usize,
         use_opq: bool,
     ) -> anyhow::Result<()> {
-        let mut f = std::fs::File::open(".disk/pq_pivots.bin")?;
+        let mut f = std::fs::File::open(folder_path.join("pq_pivots.bin"))
+            .with_context(|| "unable to open pq_pivots")?;
         let mut buf: Vec<u8> = Vec::new();
         f.read_to_end(&mut buf)?;
-        // let res: PQResult = rmp_serde::from_slice(&buf)?;
-        let directory = Path::new("../../../../public/DiskANN/build/data/siftsmall/disk_index_sift_learn_R32_L50_A1.2_pq_pivots.bin");
-        let res: PQResult = PQResult::from_ref_bin_format(directory)?;
+        let res: PQResult = rmp_serde::from_slice(&buf)?;
+        // run validation based on the pq_pivots.bin file
+        // the dimensions of the centroids, pivots and num_chunks should all match up
+        if num_pq_chunks + 1 != res.chunks.len() {
+            bail!(
+                "mismatch in number of pq chunks, expected: {}, file had: {}",
+                num_pq_chunks + 1,
+                res.chunks.len()
+            )
+        }
+        if res.centroid.len() != data_dim {
+            bail!(
+                "mismatch in dimension of centroid, expected: {}, file had: {}",
+                data_dim,
+                res.centroid.len(),
+            )
+        }
+        if res.pivots_dims != data_dim {
+            bail!(
+                "mismatch in dimension of pivots, expected: {}, file had: {}",
+                data_dim,
+                res.pivots_dims
+            )
+        }
 
-        let pq_compressed_path = ".disk/pq_compressed.bin";
-        let mut outputf = std::fs::File::create(pq_compressed_path)?;
-        let num_points: usize = data.len() / 128;
-        let meta = PQMetadata {
-            num_points: num_points as u32,
-            num_pq_chunks: num_pq_chunks as u32,
-        };
-        outputf.write(&rmp_serde::to_vec(&meta)?)?;
+        let mut outputf = std::fs::File::create(folder_path.join("pq_compressed.bin"))?;
+        let num_points: usize = data.len() / data_dim;
+
+        let mut meta_bytes = vec![];
+        meta_bytes.write_u32::<LittleEndian>(num_points as u32)?;
+        meta_bytes.write_u32::<LittleEndian>(num_pq_chunks as u32)?;
+        outputf.write(&meta_bytes)?;
         outputf.sync_data()?;
+
         let block_size: usize = if num_points < crate::vamana::BLOCK_SIZE {
             num_points
         } else {
             BLOCK_SIZE
         };
-        let dim = 128;
+
         let mut block_compressed_base: Vec<usize> = vec![0; block_size * num_pq_chunks];
-        // let block_data_t: Vec<f32> = vec![0.0; block_size * dim];
-        let mut block_data_f: Vec<f32> = vec![0.0; block_size * dim];
-        let mut block_data_tmp: Vec<f32> = vec![0.0; block_size * dim];
+        let mut block_data_f: Vec<f32> = vec![0.0; block_size * data_dim];
+        let mut block_data_tmp: Vec<f32> = vec![0.0; block_size * data_dim];
         let num_blocks = div_round_up(num_points, block_size);
         for block in 0..num_blocks {
             let start_id = block * block_size;
             let end_id = std::cmp::min((block + 1) * block_size, num_points);
             let curr_block_size = end_id - start_id;
-            let idx_start = block * block_size * dim;
-            let idx_end = idx_start + (block_size * dim);
+            let idx_start = block * block_size * data_dim;
+            let idx_end = idx_start + (block_size * data_dim);
             block_data_tmp[..].copy_from_slice(&data[idx_start..idx_end]);
             info!("processing: [{start_id}, {end_id})");
             for p in 0..curr_block_size {
-                for d in 0..dim {
-                    block_data_tmp[p * dim + d] -= res.centroid[d];
+                for d in 0..data_dim {
+                    block_data_tmp[p * data_dim + d] -= res.centroid[d];
                 }
             }
             for p in 0..curr_block_size {
-                for d in 0..dim {
-                    block_data_f[p * dim + d] = block_data_tmp[p * dim + d];
+                for d in 0..data_dim {
+                    block_data_f[p * data_dim + d] = block_data_tmp[p * data_dim + d];
                 }
             }
             if use_opq {
@@ -318,15 +355,15 @@ where
                 for j in 0..curr_block_size {
                     for k in 0..curr_chunk_size {
                         curr_data[j * curr_chunk_size + k] =
-                            block_data_f[j * dim + res.chunks[i] + k];
+                            block_data_f[j * data_dim + res.chunks[i] + k];
                     }
                 }
                 // this has a pragma omp parallel in the c++ impl
                 for j in 0..num_centers {
                     curr_pivot_data[j * curr_chunk_size..j * curr_chunk_size + curr_chunk_size]
                         .copy_from_slice(
-                            &res.pivots[j * dim + res.chunks[i]
-                                ..j * dim + res.chunks[i] + curr_chunk_size],
+                            &res.pivots[j * data_dim + res.chunks[i]
+                                ..j * data_dim + res.chunks[i] + curr_chunk_size],
                         )
                 }
                 super::math_utils::compute_closest_centers(
@@ -342,19 +379,21 @@ where
                     block_compressed_base[j * num_pq_chunks + i] = closest_centers[j];
                 }
             }
-            if num_centers > 256 {
-                unimplemented!("we don't handle the case where num_centers > 256 just yet")
-            } else {
-                let block = rmp_serde::to_vec(&block_compressed_base)?;
-                outputf.write(&block)?;
+            // keep things simple, always write out the compressed data as u32
+            let mut block_bytes =
+                Vec::with_capacity(std::mem::size_of::<u32>() * block_compressed_base.len());
+            for d in &block_compressed_base {
+                block_bytes.write_u32::<LittleEndian>(*d as u32)?;
             }
+            outputf.write(&block_bytes)?;
         }
-        info!(".done.");
-        Ok(())
+        // finally sync out all the changes
+        Ok(outputf.sync_all()?)
     }
 
     pub fn generate_quantized_data(
         &self,
+        folder_path: &Path,
         data: &[f32],
         num_pq_chunks: usize,
         use_opq: bool,
@@ -368,6 +407,7 @@ where
         }
         if !use_opq {
             self.generate_pq_pivots(
+                folder_path,
                 data,
                 train_dim,
                 NUM_PQ_CENTROIDS,
@@ -384,7 +424,14 @@ where
                 make_zero_mean,
             )
         }
-        self.generate_pq_data_from_pivots(data, NUM_PQ_CENTROIDS, num_pq_chunks, use_opq)
+        self.generate_pq_data_from_pivots(
+            folder_path,
+            data,
+            128,
+            NUM_PQ_CENTROIDS,
+            num_pq_chunks,
+            use_opq,
+        )
     }
 }
 

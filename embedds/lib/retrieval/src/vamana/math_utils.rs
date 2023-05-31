@@ -1,6 +1,6 @@
 extern crate blas_src;
 extern crate cblas;
-use anyhow::bail;
+use anyhow::{bail, Context};
 
 fn compute_vecs_l2sq(data: &[f32], num_points: usize, dim: usize) -> anyhow::Result<Vec<f32>> {
     let mut norms: Vec<f32> = vec![0.0; num_points];
@@ -128,7 +128,7 @@ pub fn compute_closest_centers(
             &mut distance_matrix,
             k,
         )
-        .unwrap();
+        .with_context(|| "unable to compute the closest centers in block: {curr_block}")?;
         for j in curr_block * par_block_size
             ..std::cmp::min(num_points, (curr_block + 1) * par_block_size)
         {

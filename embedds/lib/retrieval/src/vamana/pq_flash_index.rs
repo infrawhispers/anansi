@@ -6,19 +6,21 @@ use std::sync::Arc;
 use anyhow::{bail, Context};
 use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::RwLock;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::av_store::AlignedDataStore;
 use crate::metric::Metric;
-use crate::vamana::pq::PQResult;
 use crate::vamana::pq_chunk_table::FixedChunkPQTable;
 use crate::vamana::reader::AlignedRead;
 use crate::vamana::reader::Reader;
 use crate::vamana::scratch::SSDThreadData;
-use crate::vamana::utils::diskann_load_bin_generic;
 use crate::vamana::utils::index_metadata_fr_file;
 use crate::vamana::utils::ref_load_aligned;
 use crate::vamana::utils::IndexMetadata;
+
+const METADATA_SIZE: usize = 4096;
+const VISITED_RESERVE_DEFAULT: usize = 4096;
+const MAX_N_SECTOR_READS: usize = 128;
 
 fn node_sector_no(node_id: usize, nnodes_per_sector: usize) -> usize {
     return node_id / nnodes_per_sector + 1;
@@ -71,68 +73,60 @@ pub struct PQFlashIndex {
     nhood_cache: Arc<RwLock<HashMap<usize, Arc<Node>>>>,
 }
 
-const METADATA_SIZE: usize = 4096;
-const VISITED_RESERVE_DEFAULT: usize = 4096;
-const MAX_N_SECTOR_READS: usize = 128;
+// let pq_table_filepath = Path::new("../../../../public/DiskANN/build/data/siftsmall/disk_index_sift_learn_R32_L50_A1.2_pq_pivots.bin");
+// let (pq_file_num_centroids, pq_file_dim) =
+//     crate::vamana::utils::get_metadata_ref(pq_table_filepath, METADATA_SIZE)?;
+// info!("pq_file_dim: {pq_file_dim}, pq_file_num_centroids: {pq_file_num_centroids}");
+// if pq_file_num_centroids != 256 {
+//     bail!("pq_file_num_centroids: {pq_file_num_centroids} expected 256");
+// }
+//  let pq_compressed_filepath = Path::new("../../../../public/DiskANN/build/data"
+//  "siftsmall/disk_index_sift_learn_R32_L50_A1.2_pq_compressed.bin");
+//  let (num_points, n_chunks, data) = diskann_load_bin_generic(pq_compressed_filepath, 0)?;
+// info!(
+//     "[PQFlashIndex] num_points: {num_points}, n_chunks: {n_chunks} | data_len: {}",
+//     data.len()
+// );
+// TODO(infrawhispers) - remove this
+// index_metadata.start = 22877;
+// index_metadata.nnodes_per_sector = 6;
+// index_metadata.max_node_len = 644;
+// TODO(infrawhispers) return std::mem::size_of::<u32> -> std::mem::size_of::<u64>
+// TODO(lneath) - remove this!
+// let reader = Reader::new(Path::new("../../../../public/DiskANN/build/data/siftsmall/disk_index_sift_learn_R32_L50_A1.2_disk.index"), rdr_runtime)?;
+
 impl PQFlashIndex {
     pub fn new(
         num_threads: usize,
         folder: &Path,
         rdr_runtime: Arc<tokio_uring::Runtime>,
     ) -> anyhow::Result<Self> {
-        let pq_table_filepath = Path::new("../../../../public/DiskANN/build/data/siftsmall/disk_index_sift_learn_R32_L50_A1.2_pq_pivots.bin");
-        let res: PQResult = PQResult::from_ref_bin_format(pq_table_filepath)?;
-        let pq_compressed_filepath = Path::new("../../../../public/DiskANN/build/data/siftsmall/disk_index_sift_learn_R32_L50_A1.2_pq_compressed.bin");
-
-        let (pq_file_num_centroids, pq_file_dim) =
-            crate::vamana::utils::get_metadata_ref(pq_table_filepath, METADATA_SIZE)?;
-        info!("pq_file_dim: {pq_file_dim}, pq_file_num_centroids: {pq_file_num_centroids}");
-        if pq_file_num_centroids != 256 {
-            bail!("pq_file_num_centroids: {pq_file_num_centroids} expected 256");
+        let (num_points, n_chunks, data) =
+            crate::vamana::PQ::<crate::metric::MetricL2>::load_fr_compressed(folder)?;
+        let table = FixedChunkPQTable::fr_pivots_bin(folder, n_chunks)?;
+        let num_pivots = table.tables.len() / table.ndims;
+        if num_pivots != 256 {
+            bail!("expected num_pivots to be: 256 got: {}", num_pivots)
         }
 
-        let data_dim: usize = pq_file_dim;
-        let disk_data_dim: usize = pq_file_dim;
-        let disk_bytes_per_point: usize = pq_file_dim * std::mem::size_of::<f32>();
-
-        let aligned_dim = crate::vamana::utils::round_up(pq_file_dim, 8);
-        let (num_points, n_chunks, data) = diskann_load_bin_generic(pq_compressed_filepath, 0)?;
-        let num_points = num_points;
-        let n_chunks = n_chunks;
-        let data = data;
-
+        let data_dim: usize = table.ndims;
+        let disk_data_dim: usize = table.ndims;
+        let disk_bytes_per_point: usize = table.ndims * std::mem::size_of::<f32>();
+        let aligned_dim = crate::vamana::utils::round_up(table.ndims, 8);
         info!(
-            "[PQFlashIndex] num_points: {num_points}, n_chunks: {n_chunks} | data_len: {}",
-            data.len()
-        );
-        let table = FixedChunkPQTable::load_pq_centroid_bin(pq_table_filepath, n_chunks)?;
-        info!(
-            "loaded PQ centroids and in-memory compressed vectors num_points: {} \
-            | data_dim: {} | aligned_dim: {} | chunks: {}",
-            num_points, data_dim, aligned_dim, n_chunks,
+            "loaded PQ centorids and in-memory compressed vectors. dims: {}, n_chunks: {}, n_points: {}",
+            table.ndims, n_chunks, num_points
         );
         let mut index_metadata = index_metadata_fr_file(&folder.join("disk-metadata.bin"))?;
-
-        // TODO(infrawhispers) - remove this
-        // index_metadata.start = 22877;
-        // index_metadata.nnodes_per_sector = 6;
-        // index_metadata.max_node_len = 644;
-
-        // TODO(infrawhispers) return std::mem::size_of::<u32> -> std::mem::size_of::<u64>
         let max_degree =
             ((index_metadata.max_node_len - disk_bytes_per_point) / std::mem::size_of::<u64>()) - 1;
-        info!(
-            "diskindex metadata: nnodes_per_sector: {} | max_nodes_len: {}B | max_degree: {}",
-            index_metadata.nnodes_per_sector, index_metadata.max_node_len, max_degree
-        );
-
-        info!("setting up thread data for {} threads", 1);
         let thread_data = SSDThreadData::new(aligned_dim, VISITED_RESERVE_DEFAULT)
             .with_context(|| "unable to create SSDThreadData")?;
-
         let reader = Reader::new(&folder.join("disk.bin"), rdr_runtime)?;
-        // TODO(lneath) - remove this!
-        // let reader = Reader::new(Path::new("../../../../public/DiskANN/build/data/siftsmall/disk_index_sift_learn_R32_L50_A1.2_disk.index"), rdr_runtime)?;
+        info!(
+            "opened index, nnodes_per_sector: {} max_nodes_len: {} B | max_degree: {}",
+            index_metadata.nnodes_per_sector, index_metadata.max_node_len, max_degree
+        );
 
         let num_medoids = 1;
         let medoids = vec![index_metadata.start];
@@ -207,14 +201,10 @@ impl PQFlashIndex {
             )
         };
         if nnbr_count.len() != 1 || nnbr_count[0] == 0 {
-            warn!(
-                "found vid: {vid} with an unexpected number of neighbors: {nnbr_count:?}, skipping",
-            );
             bail!("unexpected nnbr_count: {nnbr_count:?}");
         }
         let num_nnbrs: usize = nnbr_count[0].try_into()?;
-        // TODO(infrawhispers) - u32 -> u64
-        let nnbrs_u32: &[u64] = unsafe {
+        let nnbrs_u64: &[u64] = unsafe {
             std::slice::from_raw_parts(
                 sector_scratch.data[coords_end + std::mem::size_of::<u64>()
                     ..coords_end
@@ -224,15 +214,14 @@ impl PQFlashIndex {
                 num_nnbrs,
             )
         };
-        // let mut nnbrs: Vec<usize> = Vec::new();
-        for (idx, nnbr) in nnbrs_u32.iter().enumerate() {
+        for (idx, nnbr) in nnbrs_u64.iter().enumerate() {
             nbrs[idx] = *nnbr as usize
         }
         Ok(num_nnbrs)
     }
 
     pub fn load_cache_list(&self, nodes: Vec<usize>) -> anyhow::Result<()> {
-        info!("loading cache_list of size: {}", nodes.len());
+        info!("[load_cache_list] size: {}", nodes.len());
         let mut scratch_w = self.thread_data.write();
         let num_chunks = 128;
         let block_size = 8;
@@ -450,8 +439,8 @@ impl PQFlashIndex {
                         frontiers.push(nbr.vid);
                     }
                 }
-                // increment the visited_nodes_cnter if we are going to
-                // generate a cached object
+                // increment the visited_nodes_cnter if this call to cached_beam_search
+                // is being used to update the nodes that are currently cached
                 match visited_nodes_cnter.as_ref() {
                     Some(cntr) => {
                         let mut create: bool = false;
@@ -473,7 +462,6 @@ impl PQFlashIndex {
                     }
                     None => {}
                 }
-                // TODO(infrawhispers) - add visited_nodes count
             }
             // read nhoods of frontier ids
             if !frontiers.is_empty() {
@@ -576,14 +564,9 @@ impl PQFlashIndex {
                     }
                 }
             }
-            // print!("curr_hops: {}, ret_set:", hops);
-            // retset.print();
             hops += 1;
         }
-        // info!("hops: {hops}, cmps: {cmps}, num_ios: {num_ios}, num_4kb: {num_4kb}");
         full_retset.sort();
-        // info!("full_retset: {full_retset:?}");
-        // handle use_reorder_data
         let mut result: Vec<crate::ann::Node> = Vec::with_capacity(k);
         for i in 0..k {
             if i >= full_retset.len() {
@@ -611,7 +594,7 @@ impl PQFlashIndex {
     ) -> anyhow::Result<AlignedDataStore<f32>> {
         let mut centroid_data = AlignedDataStore::<f32>::new(1, medoids.len() * aligned_dim);
         for (idx, medoid) in medoids.iter().enumerate() {
-            info!("loading centroid data for idx: {idx} medoid: {medoid} ");
+            info!("loading centroid data for medoid_idx: {idx} medoid: {medoid} ");
             let mut medoid_buf = AlignedDataStore::<u8>::new(1, crate::vamana::SECTOR_LEN);
             let mut read_reqs: Vec<AlignedRead> = vec![AlignedRead {
                 len: crate::vamana::SECTOR_LEN,
@@ -628,7 +611,7 @@ impl PQFlashIndex {
                 let ptr = (medoid_buf.data.as_ptr() as *mut f32).add(medoid_node_idx);
                 let slice: &[f32] = std::slice::from_raw_parts(ptr, aligned_dim);
                 info!(
-                    "medoid: {medoid} => [{}, {}, {}...{}, {}, {}]",
+                    "loaded medoid: {medoid} => [{}, {}, {}...{}, {}, {}]",
                     slice[0],
                     slice[1],
                     slice[2],
