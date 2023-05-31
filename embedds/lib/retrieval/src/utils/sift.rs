@@ -7,12 +7,12 @@ use byteorder::{BigEndian, ByteOrder};
 use byteorder::{LittleEndian, ReadBytesExt};
 
 pub struct SIFT<'a> {
-    directory: &'a Path,
-    dims: usize,
+    pub directory: &'a Path,
+    pub dims: usize,
 }
 
 impl SIFT<'_> {
-    fn fetch_vectors(&self, filename: &str) -> anyhow::Result<Vec<f32>> {
+    pub fn fetch_vectors(&self, filename: &str) -> anyhow::Result<Vec<f32>> {
         let path = self.directory.join(filename);
         let data_r = fs::read(path)?;
         let data_r_slice = data_r.as_slice();

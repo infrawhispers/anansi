@@ -12,6 +12,13 @@ run:
 		-p 50051:50051 \
 		-p 50052:50052 anansi:latest-slim
 
+run-dev:
+	
+	docker run -p  0.0.0.0:50051:50051 -p 0.0.0.0:50052:50052 \
+		-v $(PWD):/app/ \
+		-v /app/target/ \
+		-it --entrypoint bash anansi:dev
+
 push-to-ecr:
 	aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.$(REGION).amazonaws.com && \
 	docker tag $(IMG) ${AWS_ACCOUNT_ID}.dkr.ecr.$(REGION).amazonaws.com/$(IMG) && \
@@ -34,7 +41,7 @@ push-to-ecr:
 # 		--target anansi-embeddings:raw
 
 build-slim:
-	# docker build . -t anansi:latest-fat && \
+	docker build . -t anansi:latest-fat && \
 	slim build --http-probe=false --publish-port 0.0.0.0:50051:50051 \
 		--publish-port 0.0.0.0:50052:50052 --mount $(PWD)/.cache:/app/.cache --include-path \
 		/var/log/supervisord --include-path=/app/runtime \

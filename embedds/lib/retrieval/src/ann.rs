@@ -56,6 +56,7 @@ pub trait ElementVal<'de>:
     + std::ops::AddAssign
     + num::ToPrimitive
     + num::FromPrimitive
+    + num::cast::AsPrimitive<f32>
     + Sized
     + std::fmt::Debug
     + Serialize
