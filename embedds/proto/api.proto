@@ -143,11 +143,14 @@ message EncodeBatch {
 }
 
 message EncodeRequest {
-  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {example: '{"data":[{"model_class":"ModelClass_INSTRUCTOR","model_name":"INSTRUCTOR_LARGE", "text":["3D ActionSLAM: wearable person tracking ...","Inside Gohar World and the Fine, Fantastical Art"],"instructions":["Represent the Science title:","Represent the Magazine title:"]}]}'};
-  // batching occurs at the EncodeBundle level - to ensure proper optimization, one will need
-  // to ensure that for a given model, you provide _all_ the data that must be encoded by
-  // said model
-  repeated EncodeBatch batches = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {description: "repeated data items to generate encodings for"}];
+  option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_schema) = {
+    example: '{"batches":[{"model_name":"INSTRUCTOR_LARGE","model_class":"ModelClass_INSTRUCTOR","text":{"data":[{"instruction":"Represent the Science title:","value":"3D ActionSLAM: wearable person tracking ..."},{"instruction":"Represent the Nature title:","value":"Inside Gohar World and the Fine, Fantastical Art"}]}}]}'
+  };
+  repeated EncodeBatch batches = 1 [(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_field) = {
+    description:
+      "repeated list of batches which are to be encoded - batching occurs <i>within</i> an encode batch "
+      "and the size of the batch is handled automatically based on the ModelClass."
+  }];
 }
 
 message EncodeResult {

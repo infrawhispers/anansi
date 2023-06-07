@@ -22,7 +22,7 @@ impl ScalarQuantizer {
     fn gen_quantize_params(&self, arr_a: &[f32]) -> (f32, f32) {
         let mut vals = Vec::with_capacity(arr_a.len());
         arr_a.iter().for_each(|x| {
-            vals.push_within_capacity(*x as f64);
+            vals.push_within_capacity(*x as f64).unwrap();
         });
 
         let mut settings_w = self.settings.write();

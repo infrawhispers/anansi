@@ -9,14 +9,17 @@
 pub mod ann;
 mod av_store;
 pub mod diskannv1;
-mod errors;
+
 pub mod flat_lite;
 pub mod manager;
 pub mod metric;
-mod nn_query_scratch;
-mod nn_queue;
 pub mod scalar_quantizer;
 pub mod utils;
+
+mod errors;
+mod nn_query_scratch;
+mod nn_queue;
+mod vamana;
 // mod diskannv1_test;
 
 #[cfg(feature = "full")]

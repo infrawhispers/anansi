@@ -43,7 +43,7 @@ impl<T: Num + std::marker::Copy> AlignedDataStore<T> {
     pub fn new(total_internal_points: usize, aligned_dim: usize) -> AlignedDataStore<T> {
         let mut data_vec: Vec<T>;
         unsafe {
-            // n_bytes: total_points * aligned_dim * [size_of(float) | size_of(uint8)]
+            // n_bytes: total_points * aligned_dim * [size_of(f32) | size_of(u8)]
             data_vec = AlignedDataStore::<T>::aligned_vec(
                 total_internal_points * aligned_dim * std::mem::size_of::<T>(),
             );

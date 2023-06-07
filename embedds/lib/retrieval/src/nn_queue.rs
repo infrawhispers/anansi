@@ -1,6 +1,7 @@
 use crate::ann;
 use std::ops::Index;
 
+#[derive(Debug)]
 pub struct NNPriorityQueue {
     size: usize,
     capacity: usize,
@@ -45,11 +46,25 @@ impl NNPriorityQueue {
     pub fn clear(&mut self) {
         self.size = 0;
         self.curr = 0;
-        self.data[..].fill(ann::INode {
+        self.data[..self.capacity].fill(ann::INode {
             vid: 0,
             distance: std::f32::INFINITY,
             flag: false,
         });
+    }
+
+    pub fn reserve(&mut self, capacity: usize) {
+        if capacity + 1 > self.data.len() {
+            self.data.resize(
+                capacity + 1,
+                ann::INode {
+                    vid: 0,
+                    distance: std::f32::INFINITY,
+                    flag: false,
+                },
+            );
+        }
+        self.capacity = capacity;
     }
 
     pub fn insert(&mut self, nbr: ann::INode) {
@@ -63,6 +78,8 @@ impl NNPriorityQueue {
             let mid: usize = (lo + hi) >> 1;
             if nbr.distance < self.data[mid].distance {
                 hi = mid;
+            } else if self.data[mid].vid == nbr.vid {
+                return;
             } else {
                 lo = mid + 1;
             }

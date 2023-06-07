@@ -1,3 +1,29 @@
+use std::cmp;
+use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::fs::OpenOptions;
+use std::io::prelude::*;
+use std::io::SeekFrom;
+use std::marker::PhantomData;
+use std::ops::ControlFlow;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
+use std::thread::available_parallelism;
+use std::time::Instant;
+use std::{thread, time};
+use tracing::info;
+
+use anyhow::{bail, Context};
+use byteorder::{LittleEndian, WriteBytesExt};
+use crossbeam_channel::{bounded, Receiver, Sender};
+use parking_lot::RwLock;
+use rand::distributions::{Distribution, Standard};
+use rand::thread_rng;
+use rayon::prelude::*;
+use roaring::RoaringTreemap;
+use serde::{Deserialize, Serialize};
+
 use crate::ann;
 use crate::ann::EId;
 use crate::av_store;
@@ -7,24 +33,6 @@ use crate::metric;
 use crate::nn_query_scratch;
 use crate::nn_queue;
 use crate::scalar_quantizer;
-
-use anyhow::bail;
-use crossbeam_channel::{bounded, Receiver, Sender};
-use parking_lot::RwLock;
-use rand::distributions::{Distribution, Standard};
-use rand::thread_rng;
-use rayon::prelude::*;
-use roaring::RoaringTreemap;
-use serde::{Deserialize, Serialize};
-use std::cmp;
-use std::collections::{HashMap, HashSet};
-use std::marker::PhantomData;
-use std::ops::ControlFlow;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
-use std::thread::available_parallelism;
-use std::time::Instant;
-use std::{thread, time};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct DiskANNParams {
@@ -44,6 +52,7 @@ pub struct DiskANNParamsInternal {
     pub aligned_dim: usize,
     pub num_frozen_pts: usize,
     pub nd: usize,
+    pub total_points: usize,
     pub start: usize,
     pub saturate_graph: bool,
 }
@@ -1099,6 +1108,147 @@ where
         Ok(())
     }
 
+    fn save_ref_tags(&self, path: &PathBuf) -> anyhow::Result<()> {
+        if path.exists() {
+            fs::remove_file(path)?;
+        }
+        let mut f = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .append(true)
+            .open(path)?;
+
+        let location_to_tag = self.location_to_tag.write();
+        let mut tags: Vec<crate::ann::EId> =
+            vec![crate::ann::EId([0u8; 16]); self.params.read().nd];
+        for vid in 0..self.params.read().nd {
+            match location_to_tag.get(&vid) {
+                Some(eid) => tags[vid] = *eid,
+                None => {}
+            }
+        }
+        let tags_b = rmp_serde::to_vec(&*tags)?;
+        f.write(&tags_b)?;
+        f.sync_all()
+            .with_context(|| "unable to sync changes to filesystem")?;
+        Ok(())
+    }
+
+    fn save_ref_deletes(&self, path: &PathBuf) -> anyhow::Result<()> {
+        let delete_set = self.delete_set.write();
+        let delete_set_b = rmp_serde::to_vec(&*delete_set)?;
+        if path.exists() {
+            fs::remove_file(path)?;
+        }
+        let mut f = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .append(true)
+            .open(path)?;
+        f.write(&delete_set_b)?;
+        f.sync_all()
+            .with_context(|| "unable to sync changes to filesystem")?;
+        Ok(())
+    }
+
+    fn save_ref_data(&self, path: &PathBuf) -> anyhow::Result<()> {
+        if path.exists() {
+            fs::remove_file(path)?;
+        }
+        let mut f = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .append(true)
+            .open(path)?;
+        // this is where we are saving the data!
+        let data = self.data.write();
+        let num_points: u64 = self.params.read().total_points.try_into()?;
+        let dims: u64 = data.data.len() as u64 / num_points;
+        info!("data dimensions: {}", dims);
+        let mut wtr = vec![];
+        wtr.write_u64::<LittleEndian>(num_points)?;
+        wtr.write_u64::<LittleEndian>(dims)?;
+        f.write(&wtr)?;
+        for arr in data.data.chunks(dims.try_into()?) {
+            let mut wtr = vec![];
+            for val in arr {
+                let val: f32 = val.as_();
+                wtr.write_f32::<LittleEndian>(val)?;
+            }
+            f.write(&wtr).with_context(|| "error writing data chunk")?;
+        }
+        f.sync_all()
+            .with_context(|| "unable to sync changes to filesystem")?;
+        Ok(())
+    }
+
+    fn save_ref_graph(&self, path: &PathBuf) -> anyhow::Result<u64> {
+        if path.exists() {
+            fs::remove_file(path)?;
+        }
+        let mut f = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            // If a file is opened with both read and append access, beware that
+            // after opening, and after every write, the position for reading may
+            // be set at the end of the file. (emphasis added)
+            .append(false)
+            .open(path)?;
+        let params = self.params.write();
+        let final_graph = &self.final_graph;
+
+        let mut wtr = vec![];
+        let mut index_size: u64 = 32;
+        let mut max_degree: u64 = 0;
+        wtr.write_u64::<LittleEndian>(index_size as u64)?;
+        wtr.write_u64::<LittleEndian>(max_degree as u64)?;
+        wtr.write_u64::<LittleEndian>(params.start as u64)?;
+        wtr.write_u64::<LittleEndian>(params.num_frozen_pts as u64)?;
+        f.write(&wtr)?;
+        for vid in 0..final_graph.len() {
+            let nbrs = final_graph[vid].write();
+            let mut wtr = vec![];
+            let num_nbrs: u64 = nbrs.len() as u64;
+            wtr.write_u64::<LittleEndian>(num_nbrs)?;
+            for nbr_idx in 0..nbrs.len() {
+                wtr.write_u64::<LittleEndian>(nbrs[nbr_idx] as u64)?;
+            }
+            f.write(&wtr)?;
+            max_degree = std::cmp::max(max_degree, num_nbrs);
+            index_size += (std::mem::size_of::<u64>() * (nbrs.len() + 1)) as u64;
+        }
+        f.seek(SeekFrom::Start(0))?;
+        let mut wrt_meta = vec![];
+        wrt_meta.write_u64::<LittleEndian>(index_size as u64)?;
+        wrt_meta.write_u64::<LittleEndian>(max_degree as u64)?;
+        f.write(&wrt_meta)?;
+        f.sync_all()
+            .with_context(|| "unable to sync changes to filesystem")?;
+        Ok(index_size)
+    }
+
+    pub fn save_ref_bin(&self, path: &std::path::Path) -> anyhow::Result<()> {
+        let mut graph_file_path = PathBuf::from(path);
+        graph_file_path.push("index-in-mem.graph");
+        let bytes_written = self.save_ref_graph(&graph_file_path)?;
+        info!("graph byte size: {bytes_written}");
+
+        let mut tags_file_path = PathBuf::from(path);
+        tags_file_path.push("index-in-mem.tags");
+        self.save_ref_tags(&tags_file_path)?;
+
+        let mut delete_file_path = PathBuf::from(path);
+        delete_file_path.push("index-in-mem.del");
+        info!("saving delete-set to: {delete_file_path:?}");
+        self.save_ref_deletes(&delete_file_path)?;
+
+        let mut data_file_path = PathBuf::from(path);
+        data_file_path.push("index-in-mem.data");
+        self.save_ref_data(&data_file_path)?;
+
+        Ok(())
+    }
+
     pub fn maintain(&self) {
         let maintenance_period: u64;
         {
@@ -1148,6 +1298,7 @@ where
                 params_e: params.clone(),
                 aligned_dim: aligned_dim,
                 nd: params.max_points,
+                total_points: total_internal_points,
                 saturate_graph: false,
                 num_frozen_pts: num_frozen_pts,
                 start: params.max_points,
@@ -1180,11 +1331,11 @@ where
         {
             let params = paramsi.read();
             let mut lt = location_to_tag.write();
-            lt.reserve(total_internal_points);
+            lt.reserve(params.total_points);
             let mut tl = tag_to_location.write();
-            tl.reserve(total_internal_points);
+            tl.reserve(params.total_points);
             data = Arc::new(RwLock::new(AlignedDataStore::new(
-                params.params_e.max_points + 1,
+                params.total_points,
                 params.aligned_dim,
             )));
         }

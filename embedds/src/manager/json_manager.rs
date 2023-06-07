@@ -643,9 +643,7 @@ pub struct JSONIndexManager {
     index_mgr: Arc<IndexManager>,
     cf_name: String,
     dir_path: PathBuf,
-    index_details: RwLock<HashMap<String, Arc<CollectionMgr>>>,
-    // within rocksdb we store the following:
-    // b"{index_name}" -> b"{index_details}
+    collections: RwLock<HashMap<String, Arc<CollectionMgr>>>,
     rocksdb_instance: Arc<RwLock<rocksdb::DB>>,
 }
 
@@ -727,11 +725,11 @@ impl JSONIndexManager {
             cf_name: cf_name.to_string(),
             dir_path: dir_path,
             index_mgr: index_mgr,
-            index_details: RwLock::new(HashMap::new()),
+            collections: RwLock::new(HashMap::new()),
             rocksdb_instance: rocksdb_instance,
         };
-        let indices = obj.mgrs_fr_rocksdb()?;
-        obj.index_details.write().extend(indices);
+        let mgrs = obj.mgrs_fr_rocksdb()?;
+        obj.collections.write().extend(mgrs);
         Ok(obj)
     }
 
@@ -787,7 +785,7 @@ impl JSONIndexManager {
         index_name: &str,
         queries: &[crate::api::SearchQuery],
     ) -> anyhow::Result<Vec<crate::IndexItems>> {
-        let mgrs = self.index_details.read();
+        let mgrs = self.collections.read();
         let mgr = mgrs
             .get(index_name)
             .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
@@ -795,7 +793,7 @@ impl JSONIndexManager {
     }
 
     pub fn search(&self, index_name: &str, req: &IndexSearch) -> anyhow::Result<Vec<NodeHit>> {
-        let mgrs = self.index_details.read();
+        let mgrs = self.collections.read();
         let mgr = mgrs
             .get(index_name)
             .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
@@ -810,7 +808,7 @@ impl JSONIndexManager {
         Vec<crate::IndexItems>,
         HashMap<retrieval::ann::EId, serde_json::Value>,
     )> {
-        let mgrs = self.index_details.read();
+        let mgrs = self.collections.read();
         let mgr = mgrs
             .get(index_name)
             .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
@@ -818,7 +816,7 @@ impl JSONIndexManager {
     }
 
     pub fn delete_data(&self, index_name: &str, ids: Vec<String>) -> anyhow::Result<()> {
-        let mgrs = self.index_details.read();
+        let mgrs = self.collections.read();
         let mgr = mgrs
             .get(index_name)
             .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
@@ -831,7 +829,7 @@ impl JSONIndexManager {
         data: Vec<crate::IndexItems>,
         src_by_id: HashMap<retrieval::ann::EId, serde_json::Value>,
     ) -> anyhow::Result<()> {
-        let mgrs = self.index_details.read();
+        let mgrs = self.collections.read();
         let mgr = mgrs
             .get(index_name)
             .ok_or_else(|| anyhow::anyhow!("index: {index_name} does not exist"))?;
@@ -840,9 +838,9 @@ impl JSONIndexManager {
 
     pub fn delete_index(&self, index_name: &str) -> anyhow::Result<()> {
         {
-            let indices = self.index_details.read();
+            let mgrs = self.collections.read();
             let mgr;
-            match indices.get(index_name) {
+            match mgrs.get(index_name) {
                 Some(res) => mgr = res,
                 None => return Ok(()),
             }
@@ -856,7 +854,7 @@ impl JSONIndexManager {
             )
         })?;
         instance.delete_cf(cf, "collection::{index_name}")?;
-        self.index_details.write().remove(index_name);
+        self.collections.write().remove(index_name);
         Ok(())
     }
 
@@ -867,8 +865,8 @@ impl JSONIndexManager {
         settings: &IndexSettings,
     ) -> anyhow::Result<()> {
         {
-            let indices = self.index_details.read();
-            if indices.contains_key(index_name) {
+            let mgrs = self.collections.read();
+            if mgrs.contains_key(index_name) {
                 bail!("index: {index_name} already exists",);
             }
         }
@@ -893,7 +891,7 @@ impl JSONIndexManager {
             )
         })?;
         instance.put_cf(cf, "collection::{index_name}", format!("{index_name}"))?;
-        self.index_details
+        self.collections
             .write()
             .insert(index_name.to_string(), Arc::new(mgr));
 
